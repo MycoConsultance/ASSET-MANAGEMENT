@@ -9,6 +9,7 @@ export default function AdminPartnersPage() {
   const [partners, setPartners] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Form State
   const [companyName, setCompanyName] = useState('');
@@ -27,8 +28,14 @@ export default function AdminPartnersPage() {
   });
 
   const fetchPartners = async () => {
-    const { data } = await supabase.from('partners').select('*').order('created_at', { ascending: false });
-    if (data) setPartners(data);
+    const { data, error } = await supabase.from('partners').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.error('Errore caricamento partners:', error);
+      setErrorMsg(error.message);
+    } else if (data) {
+      setPartners(data);
+      setErrorMsg('');
+    }
   };
 
   useEffect(() => {
@@ -43,6 +50,7 @@ export default function AdminPartnersPage() {
     e.preventDefault();
     if (!companyName || !contactEmail) return;
     setSaving(true);
+    setErrorMsg('');
 
     const { error } = await supabase.from('partners').insert({
       company_name: companyName,
@@ -56,7 +64,9 @@ export default function AdminPartnersPage() {
       services_offered: services,
     });
 
-    if (!error) {
+    if (error) {
+      setErrorMsg(error.message);
+    } else {
       setCompanyName('');
       setDescription('');
       setContactEmail('');
@@ -78,6 +88,12 @@ export default function AdminPartnersPage() {
             <p className="text-xs text-slate-500">Gestisci i fornitori accreditati da mostrare agli investitori</p>
           </div>
         </div>
+
+        {errorMsg && (
+          <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
+            ⚠️ Messaggio di errore Supabase: {errorMsg}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
@@ -167,28 +183,32 @@ export default function AdminPartnersPage() {
           <div className="lg:col-span-2 space-y-4">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Network Fornitori Attivi ({partners.length})</h2>
 
-            <div className="space-y-3">
-              {partners.map((p) => (
-                <div key={p.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative space-y-2">
-                  {p.is_myco_recommended && (
-                    <span className="inline-block bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      ★ {p.badge_label || 'Consigliato da Myco'}
-                    </span>
-                  )}
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900">{p.company_name}</h3>
-                      <p className="text-xs text-slate-500">{p.category} • {p.city}</p>
+            {loading ? (
+              <p className="text-xs text-slate-400 italic">Caricamento fornitori...</p>
+            ) : (
+              <div className="space-y-3">
+                {partners.map((p) => (
+                  <div key={p.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative space-y-2">
+                    {p.is_myco_recommended && (
+                      <span className="inline-block bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                        ★ {p.badge_label || 'Consigliato da Myco'}
+                      </span>
+                    )}
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">{p.company_name}</h3>
+                        <p className="text-xs text-slate-500">{p.category} • {p.city}</p>
+                      </div>
+                      <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
+                        ★ {p.rating}
+                      </span>
                     </div>
-                    <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
-                      ★ {p.rating}
-                    </span>
+                    <p className="text-xs text-slate-600 line-clamp-2">{p.description}</p>
+                    <div className="text-[11px] text-slate-400 font-mono">Contatto: {p.contact_email}</div>
                   </div>
-                  <p className="text-xs text-slate-600 line-clamp-2">{p.description}</p>
-                  <div className="text-[11px] text-slate-400 font-mono">Contatto: {p.contact_email}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
