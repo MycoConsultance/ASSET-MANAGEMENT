@@ -12,19 +12,16 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [property, setProperty] = useState<any>(null);
   const [documents, setDocuments] = useState<any[]>([]);
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
 
-  // Tab State
+  // Tab State Documenti
   const [docCategory, setDocCategory] = useState<'LEGALE' | 'CANTIERE' | 'FISCALE'>('LEGALE');
 
-  // Modal / Bottom Sheet State Invito
+  // Modal / Bottom Sheet State Partner
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [partnerEmail, setPartnerEmail] = useState('');
-  const [partnerRole, setPartnerRole] = useState('NOTAIO');
-  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
-  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Modal Nuova Voce Capitolato/SAL
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
@@ -32,9 +29,17 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [itemCategory, setItemCategory] = useState('OPERE_EDILI');
   const [itemBudgeted, setItemBudgeted] = useState('');
   const [itemActual, setItemActual] = useState('');
-  const [itemSal, setItemSal] = useState('0');
-  const [itemStatus, setItemStatus] = useState('IN_CORSO');
   const [savingItem, setSavingItem] = useState(false);
+
+  // Modal Nuova Transazione Cassa
+  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [txType, setTxType] = useState<'ENTRATA' | 'USCITA'>('ENTRATA');
+  const [txCategory, setTxCategory] = useState('CANONE_LOCAZIONE');
+  const [txDescription, setTxDescription] = useState('');
+  const [txAmount, setTxAmount] = useState('');
+  const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
+  const [txStatus, setTxStatus] = useState('PAGATO');
+  const [savingTx, setSavingTx] = useState(false);
 
   const fetchPropertyData = async (propId: string) => {
     const { data: prop } = await supabase.from('properties').select('*').eq('id', propId).single();
@@ -45,6 +50,9 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: items } = await supabase.from('property_budget_items').select('*').eq('property_id', propId).order('created_at', { ascending: true });
     if (items) setBudgetItems(items);
+
+    const { data: txs } = await supabase.from('property_transactions').select('*').eq('property_id', propId).order('transaction_date', { ascending: false });
+    if (txs) setTransactions(txs);
   };
 
   useEffect(() => {
@@ -63,11 +71,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const handlePhaseChange = async (newPhaseId: string) => {
     if (userRole !== 'STAFF' && userRole !== 'ADMIN') return;
     const { error } = await supabase.from('properties').update({ current_phase: newPhaseId }).eq('id', property.id);
-    if (!error) {
-      await fetchPropertyData(property.id);
-    } else {
-      alert('Errore aggiornamento fase: ' + error.message);
-    }
+    if (!error) await fetchPropertyData(property.id);
   };
 
   const handleAddBudgetItem = async (e: React.FormEvent) => {
@@ -81,8 +85,8 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
       description: itemDescription,
       budgeted_amount: parseFloat(itemBudgeted) || 0,
       actual_amount: parseFloat(itemActual) || 0,
-      sal_percentage: parseInt(itemSal) || 0,
-      status: itemStatus,
+      sal_percentage: 0,
+      status: 'IN_CORSO',
     });
 
     if (!error) {
@@ -90,12 +94,33 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
       setItemDescription('');
       setItemBudgeted('');
       setItemActual('');
-      setItemSal('0');
       await fetchPropertyData(property.id);
-    } else {
-      alert('Errore inserimento voce: ' + error.message);
     }
     setSavingItem(false);
+  };
+
+  const handleAddTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!txDescription || !txAmount) return;
+    setSavingTx(true);
+
+    const { error } = await supabase.from('property_transactions').insert({
+      property_id: property.id,
+      type: txType,
+      category: txCategory,
+      description: txDescription,
+      amount: parseFloat(txAmount) || 0,
+      transaction_date: txDate,
+      status: txStatus,
+    });
+
+    if (!error) {
+      setIsTxModalOpen(false);
+      setTxDescription('');
+      setTxAmount('');
+      await fetchPropertyData(property.id);
+    }
+    setSavingTx(false);
   };
 
   const handleUpdateItemSal = async (itemId: string, newSal: number) => {
@@ -110,23 +135,18 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     setUploading(true);
     try {
       const filePath = `${property.id}/${Date.now()}_${file.name}`;
-      const { error: uploadErr } = await supabase.storage.from('property-documents').upload(filePath, file);
-      if (uploadErr) throw uploadErr;
+      await supabase.storage.from('property-documents').upload(filePath, file);
       const { data: publicUrlData } = supabase.storage.from('property-documents').getPublicUrl(filePath);
-      const roleToSave = userRole === 'STAFF' || userRole === 'ADMIN' ? 'STAFF' : 'INVESTOR';
       
       await supabase.from('property_documents').insert({
         property_id: property.id,
         file_name: file.name,
         file_url: publicUrlData.publicUrl,
-        uploaded_by_role: roleToSave,
+        uploaded_by_role: userRole === 'STAFF' || userRole === 'ADMIN' ? 'STAFF' : 'INVESTOR',
         category: docCategory,
       });
 
-      alert('Documento caricato con successo!');
       await fetchPropertyData(property.id);
-    } catch (err: any) {
-      alert('Errore caricamento: ' + err.message);
     } finally {
       setUploading(false);
     }
@@ -137,14 +157,17 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
   const currentPhaseId = property.current_phase || 'ACQUISTO_DEAL';
   const currentStageObj = LIFECYCLE_STAGES.find(s => s.id === currentPhaseId) || LIFECYCLE_STAGES[0];
-  const isRendita = currentPhaseId === 'GESTIONE_LOCAZIONE' || currentPhaseId === 'REVIEW_EXIT';
 
   // Calcoli Analitici Cantiere / Budget
   const totalBudgeted = budgetItems.reduce((acc, item) => acc + Number(item.budgeted_amount || 0), 0);
-  const totalActual = budgetItems.reduce((acc, item) => acc + Number(item.actual_amount || 0), 0);
   const overallSal = budgetItems.length > 0
     ? Math.round(budgetItems.reduce((acc, item) => acc + Number(item.sal_percentage || 0), 0) / budgetItems.length)
     : 0;
+
+  // Calcoli Cassa & Contabilità
+  const totalEntrate = transactions.filter(t => t.type === 'ENTRATA' && t.status === 'PAGATO').reduce((acc, t) => acc + Number(t.amount || 0), 0);
+  const totalUscite = transactions.filter(t => t.type === 'USCITA' && t.status === 'PAGATO').reduce((acc, t) => acc + Number(t.amount || 0), 0);
+  const netCashFlow = totalEntrate - totalUscite;
 
   const filteredDocuments = documents.filter(doc => doc.category === docCategory || (!doc.category && docCategory === 'LEGALE'));
 
@@ -170,13 +193,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
             >
               📄 Export PDF
             </a>
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(true)}
-              className="bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-xl text-sm font-medium shadow-sm transition cursor-pointer"
-            >
-              🤝 Invita Partner
-            </button>
           </div>
         </div>
 
@@ -212,26 +228,90 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* GRID KPI FINANZIARI */}
+        {/* GRID KPI FINANZIARI & CASSA */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Capitale Investito</span>
-            <p className="text-2xl font-semibold text-slate-900 mt-1">{formatCurrency(property.purchase_price)}</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Avanzamento Cantiere (Media SAL)</span>
-              <span className="text-xs font-semibold text-emerald-600">{overallSal}%</span>
-            </div>
-            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-              <div className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${overallSal}%` }} />
-            </div>
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Totale Entrate Incassate</span>
+            <p className="text-2xl font-semibold text-emerald-600 mt-1">{formatCurrency(totalEntrate)}</p>
           </div>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Budget Restyling Totale</span>
-            <p className="text-2xl font-semibold text-slate-900 mt-1">{formatCurrency(totalBudgeted)}</p>
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Totale Uscite / Spese</span>
+            <p className="text-2xl font-semibold text-red-600 mt-1">{formatCurrency(totalUscite)}</p>
+          </div>
+
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Cash Flow Netto Reale</span>
+            <p className={`text-2xl font-bold mt-1 ${netCashFlow >= 0 ? 'text-slate-900' : 'text-red-500'}`}>
+              {formatCurrency(netCashFlow)}
+            </p>
+          </div>
+        </div>
+
+        {/* MODULO REGISTRO CONTABILE & TRANSAZIONI */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Registro Contabile & Flussi di Cassa</h2>
+              <p className="text-xs text-slate-500">Storico analitico di incassi, affitti e uscite di gestione</p>
+            </div>
+            {(userRole === 'STAFF' || userRole === 'ADMIN') && (
+              <button
+                type="button"
+                onClick={() => setIsTxModalOpen(true)}
+                className="bg-slate-900 text-white text-xs font-medium px-4 py-2 rounded-xl hover:bg-slate-800 transition"
+              >
+                + Registra Movimento Cassa
+              </button>
+            )}
+          </div>
+
+          {/* TABELLA TRANSAZIONI */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <th className="pb-3 pr-4">Data</th>
+                  <th className="pb-3 pr-4">Tipo</th>
+                  <th className="pb-3 pr-4">Categoria</th>
+                  <th className="pb-3 pr-4">Descrizione</th>
+                  <th className="pb-3 pr-4">Stato</th>
+                  <th className="pb-3 text-right">Importo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400 italic">
+                      Nessun movimento contabile registrato. Clicca su "+ Registra Movimento Cassa".
+                    </td>
+                  </tr>
+                ) : (
+                  transactions.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3.5 pr-4 text-slate-500">{tx.transaction_date}</td>
+                      <td className="py-3.5 pr-4">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          tx.type === 'ENTRATA' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {tx.type}
+                        </span>
+                      </td>
+                      <td className="py-3.5 pr-4 font-medium text-slate-600">{tx.category}</td>
+                      <td className="py-3.5 pr-4 font-semibold text-slate-900">{tx.description}</td>
+                      <td className="py-3.5 pr-4">
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                          {tx.status}
+                        </span>
+                      </td>
+                      <td className={`py-3.5 text-right font-bold ${tx.type === 'ENTRATA' ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {tx.type === 'ENTRATA' ? '+' : '-'}{formatCurrency(tx.amount)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -240,7 +320,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900">Gestione Analitica Cantiere & SAL</h2>
-              <p className="text-xs text-slate-500">Capitolato e Stato Avanzamento Lavori dettagliato per voce di spesa</p>
+              <p className="text-xs text-slate-500">Capitolato e Stato Avanzamento Lavori per voce di spesa</p>
             </div>
             {(userRole === 'STAFF' || userRole === 'ADMIN') && (
               <button
@@ -253,7 +333,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
             )}
           </div>
 
-          {/* TABELLA ANALITICA CAPITOLATO */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -270,7 +349,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                 {budgetItems.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-slate-400 italic">
-                      Nessuna voce di capitolato inserita. Clicca su "+ Aggiungi Voce Capitolato" per iniziare.
+                      Nessuna voce di capitolato inserita.
                     </td>
                   </tr>
                 ) : (
@@ -347,45 +426,52 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* MODALE AGGIUNGI VOCE CAPITOLATO */}
-        {isItemModalOpen && (
+        {/* MODALE NUOVA TRANSAZIONE CASSA */}
+        {isTxModalOpen && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-md space-y-4 border border-slate-200">
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <h3 className="text-sm font-bold text-slate-900 uppercase">Nuova Voce Capitolato</h3>
-                <button type="button" onClick={() => setIsItemModalOpen(false)} className="text-slate-400 text-sm">✕</button>
+                <h3 className="text-sm font-bold text-slate-900 uppercase">Registra Movimento Cassa</h3>
+                <button type="button" onClick={() => setIsTxModalOpen(false)} className="text-slate-400 text-sm">✕</button>
               </div>
 
-              <form onSubmit={handleAddBudgetItem} className="space-y-3">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Descrizione Lavoro</label>
-                  <input type="text" required value={itemDescription} onChange={(e) => setItemDescription(e.target.value)} placeholder="es. Impianto Elettrico Sfilabile" className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs" />
+              <form onSubmit={handleAddTransaction} className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                  <button type="button" onClick={() => setTxType('ENTRATA')} className={`py-2 text-xs font-bold rounded-lg ${txType === 'ENTRATA' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500'}`}>+ ENTRATA</button>
+                  <button type="button" onClick={() => setTxType('USCITA')} className={`py-2 text-xs font-bold rounded-lg ${txType === 'USCITA' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-500'}`}>- USCITA</button>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Categoria</label>
-                  <select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs bg-white">
-                    <option value="OPERE_EDILI">Opere Edili</option>
-                    <option value="IMPIANTI">Impianti & Tecnologie</option>
-                    <option value="FINITURE">Finiture & Rivestimenti</option>
-                    <option value="PROFESSIONISTI">Professionisti & Onorari</option>
-                  </select>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Descrizione</label>
+                  <input type="text" required value={txDescription} onChange={(e) => setTxDescription(e.target.value)} placeholder="es. Canone di Locazione Settembre 2026" className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase">Budget Previsto (€)</label>
-                    <input type="number" value={itemBudgeted} onChange={(e) => setItemBudgeted(e.target.value)} placeholder="8000" className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs" />
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase">Importo (€)</label>
+                    <input type="number" step="0.01" required value={txAmount} onChange={(e) => setTxAmount(e.target.value)} placeholder="1200.00" className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs font-semibold" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-500 uppercase">Costo Reale (€)</label>
-                    <input type="number" value={itemActual} onChange={(e) => setItemActual(e.target.value)} placeholder="8200" className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs" />
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase">Data</label>
+                    <input type="date" required value={txDate} onChange={(e) => setTxDate(e.target.value)} className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs" />
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Categoria</label>
+                  <select value={txCategory} onChange={(e) => setTxCategory(e.target.value)} className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs bg-white">
+                    <option value="CANONE_LOCAZIONE">Canone Locazione</option>
+                    <option value="SPESE_CONDOMINIALI">Spese Condominiali</option>
+                    <option value="IMU_TASSI">IMU / Imposte</option>
+                    <option value="MANUTENZIONE">Manutenzione</option>
+                    <option value="ASSICURAZIONE">Assicurazione</option>
+                    <option value="ALTRO">Altro</option>
+                  </select>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-2">
-                  <button type="button" onClick={() => setIsItemModalOpen(false)} className="h-10 px-4 border border-slate-200 text-xs rounded-xl">Annulla</button>
-                  <button type="submit" disabled={savingItem} className="h-10 px-5 bg-slate-900 text-white text-xs font-medium rounded-xl">Salva Voce</button>
+                  <button type="button" onClick={() => setIsTxModalOpen(false)} className="h-10 px-4 border border-slate-200 text-xs rounded-xl">Annulla</button>
+                  <button type="submit" disabled={savingTx} className="h-10 px-5 bg-slate-900 text-white text-xs font-medium rounded-xl">Salva Movimento</button>
                 </div>
               </form>
             </div>
