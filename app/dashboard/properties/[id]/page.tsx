@@ -16,10 +16,8 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [uploading, setUploading] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
 
-  // Tab State Documenti
   const [docCategory, setDocCategory] = useState<'LEGALE' | 'CANTIERE' | 'FISCALE'>('LEGALE');
 
-  // Modal Nuova Voce Capitolato/SAL (Uso esclusivo Staff)
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [itemDescription, setItemDescription] = useState('');
   const [itemCategory, setItemCategory] = useState('OPERE_EDILI');
@@ -117,15 +115,16 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const currentPhaseId = property.current_phase || 'ACQUISTO_DEAL';
   const currentStageObj = LIFECYCLE_STAGES.find(s => s.id === currentPhaseId) || LIFECYCLE_STAGES[0];
 
-  // Calcolo Mock/Dati Sintetici Finanziari Concierge
-  const grossRent = property.monthly_rent ? property.monthly_rent * 12 : 18000;
-  const managementExpenses = grossRent * 0.15; // 15% Gestione & Spese Concierge Myco
-  const netBonificato = grossRent - managementExpenses;
+  // Calcolo Dinamico Reale basato sui campi effettivi dell'immobile
+  const monthlyRent = Number(property.monthly_rent || 0);
+  const grossRent = monthlyRent > 0 ? monthlyRent * 12 : 0;
+  const managementExpenses = Number(property.management_fees || (grossRent * 0.15));
+  const netBonificato = grossRent > 0 ? (grossRent - managementExpenses) : 0;
 
   // Logica Countdown Anti-Sfitto (Transitorio)
-  const leaseEnd = property.lease_end_date ? new Date(property.lease_end_date) : new Date(Date.now() + 45 * 24 * 60 * 60 * 1000); // Default 45 giorni per demo
-  const daysToExpiration = Math.ceil((leaseEnd.getTime() - Date.now()) / (1000 * 3600 * 24));
-  const isAntiVacantAlert = daysToExpiration <= 60 && daysToExpiration > 0;
+  const leaseEnd = property.lease_end_date ? new Date(property.lease_end_date) : null;
+  const daysToExpiration = leaseEnd ? Math.ceil((leaseEnd.getTime() - Date.now()) / (1000 * 3600 * 24)) : null;
+  const isAntiVacantAlert = daysToExpiration !== null && daysToExpiration <= 60 && daysToExpiration > 0;
 
   const filteredDocuments = documents.filter(doc => doc.category === docCategory || (!doc.category && docCategory === 'LEGALE'));
 
@@ -186,7 +185,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* FINANZIARIO SINTETICO CONCIERGE */}
+        {/* FINANZIARIO SINTETICO REALE */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Canone Incassato (Lordo)</span>
@@ -207,13 +206,13 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* CARD LOCAZIONE TRANSITORIA & ALERT ANTI-SFITTO */}
+        {/* CARD LOCAZIONE TRANSITORIA */}
         {(currentPhaseId === 'MESSA_A_REDDITO' || currentPhaseId === 'CARE_MANUTENZIONE') && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-4 gap-2">
               <div>
                 <h2 className="text-base font-bold text-slate-900">Locazione Transitoria Attiva</h2>
-                <p className="text-xs text-slate-500">Monitoraggio essenziale del contratto di affitto breve/transitorio</p>
+                <p className="text-xs text-slate-500">Monitoraggio essenziale del contratto di affitto transitorio</p>
               </div>
               <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full">
                 Locato (Transitorio)
@@ -223,21 +222,20 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
               <div>
                 <span className="text-[10px] font-semibold text-slate-400 uppercase">Conduttore</span>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5">Manager In Trasferta (Corporate)</p>
+                <p className="text-sm font-semibold text-slate-900 mt-0.5">{property.tenant_name || 'In fase di assegnazione'}</p>
               </div>
               <div>
                 <span className="text-[10px] font-semibold text-slate-400 uppercase">Scadenza Contratto</span>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5">{leaseEnd.toLocaleDateString('it-IT')}</p>
+                <p className="text-sm font-semibold text-slate-900 mt-0.5">{leaseEnd ? leaseEnd.toLocaleDateString('it-IT') : 'N/D'}</p>
               </div>
               <div>
                 <span className="text-[10px] font-semibold text-slate-400 uppercase">Countdown Rendita</span>
                 <p className={`text-sm font-bold mt-0.5 ${isAntiVacantAlert ? 'text-amber-600' : 'text-slate-900'}`}>
-                  {daysToExpiration} Giorni Rimanenti
+                  {daysToExpiration !== null ? `${daysToExpiration} Giorni Rimanenti` : 'In attesa data'}
                 </p>
               </div>
             </div>
 
-            {/* ALERT EDITORIALE ANTI-SFITTO (-60 GIORNI) */}
             {isAntiVacantAlert && (
               <div className="mt-4 p-4 bg-amber-50 border border-amber-200/80 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div className="flex items-center gap-3">
@@ -261,7 +259,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         )}
 
-        {/* MODULO ANALITICO CANTIERE & SAL (Solo per Staff/Admin o fase cantiere) */}
+        {/* MODULO ANALITICO CANTIERE & SAL */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
             <div>
