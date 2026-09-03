@@ -11,7 +11,6 @@ export default function AdminPartnersPage() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Form State
   const [companyName, setCompanyName] = useState('');
   const [category, setCategory] = useState('PROPERTY_MANAGER');
   const [city, setCity] = useState('Milano');
@@ -28,22 +27,28 @@ export default function AdminPartnersPage() {
   });
 
   const fetchPartners = async () => {
-    const { data, error } = await supabase.from('partners').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Errore caricamento partners:', error);
-      setErrorMsg(error.message);
-    } else if (data) {
-      setPartners(data);
-      setErrorMsg('');
+    try {
+      const { data, error } = await supabase
+        .from('partners')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        const errDetails = error.message || error.details || error.hint || JSON.stringify(error);
+        console.error('Errore Supabase:', errDetails);
+        setErrorMsg(errDetails);
+      } else if (data) {
+        setPartners(data);
+        setErrorMsg('');
+      }
+    } catch (err: any) {
+      console.error('Eccezione:', err);
+      setErrorMsg(err?.message || 'Errore di connessione');
     }
   };
 
   useEffect(() => {
-    async function init() {
-      await fetchPartners();
-      setLoading(false);
-    }
-    init();
+    fetchPartners().finally(() => setLoading(false));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -65,7 +70,7 @@ export default function AdminPartnersPage() {
     });
 
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg(error.message || JSON.stringify(error));
     } else {
       setCompanyName('');
       setDescription('');
@@ -91,13 +96,12 @@ export default function AdminPartnersPage() {
 
         {errorMsg && (
           <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
-            ⚠️ Messaggio di errore Supabase: {errorMsg}
+            ⚠️ Status Supabase: {errorMsg}
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* FORM INSERIMENTO */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Nuovo Partner Accreditato</h2>
 
@@ -179,7 +183,6 @@ export default function AdminPartnersPage() {
             </form>
           </div>
 
-          {/* ELENCO PARTNER */}
           <div className="lg:col-span-2 space-y-4">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Network Fornitori Attivi ({partners.length})</h2>
 

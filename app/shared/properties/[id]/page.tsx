@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSearchParams } from 'next/navigation';
-import { formatCurrency, formatPhase } from '@/lib/formatters';
+import { formatCurrency } from '@/lib/formatters';
 
 export default function SharedPropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -12,150 +12,185 @@ export default function SharedPropertyPage({ params }: { params: Promise<{ id: s
   const supabase = createClient();
 
   const [property, setProperty] = useState<any>(null);
+  const [partnerAssoc, setPartnerAssoc] = useState<any>(null);
   const [documents, setDocuments] = useState<any[]>([]);
-  const [partnerInfo, setPartnerInfo] = useState<any>(null);
-  const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const [docCategory, setDocCategory] = useState<'LEGALE' | 'CANTIERE' | 'FISCALE'>('LEGALE');
+  const [loading, setLoading] = useState(true);
+
+  // State Inserimento Dati per Property Manager
+  const [grossIncome, setGrossIncome] = useState('');
+  const [operatingExpenses, setOperatingExpenses] = useState('');
+  const [savingIncome, setSavingIncome] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
-    async function validateTokenAndLoadData() {
+    async function init() {
       if (!token) {
-        setAuthorized(false);
+        setLoading(false);
         return;
       }
 
-      // Validazione Token Partner nel DB
-      const { data: partner } = await supabase
+      // 1. Verifica il token di accesso nella tabella property_partners
+      const { data: assoc } = await supabase
         .from('property_partners')
-        .select('*')
+        .select('*, partner:partner_id(*)')
         .eq('property_id', resolvedParams.id)
         .eq('access_token', token)
         .single();
 
-      if (!partner) {
-        setAuthorized(false);
-        return;
+      if (assoc) {
+        setPartnerAssoc(assoc);
+
+        // 2. Carica l'immobile
+        const { data: prop } = await supabase.from('properties').select('*').eq('id', resolvedParams.id).single();
+        if (prop) {
+          setProperty(prop);
+          setGrossIncome(prop.monthly_rent ? String(prop.monthly_rent) : '');
+          setOperatingExpenses(prop.management_fees ? String(prop.management_fees) : '');
+        }
+
+        // 3. Carica i documenti
+        const { data: docs } = await supabase.from('property_documents').select('*').eq('property_id', resolvedParams.id);
+        if (docs) setDocuments(docs);
       }
-
-      setPartnerInfo(partner);
-      setAuthorized(true);
-
-      // Caricamento Dati Immobile e Documenti
-      const { data: prop } = await supabase.from('properties').select('*').eq('id', resolvedParams.id).single();
-      if (prop) setProperty(prop);
-
-      const { data: docs } = await supabase
-        .from('property_documents')
-        .select('*')
-        .eq('property_id', resolvedParams.id)
-        .order('created_at', { ascending: false });
-      if (docs) setDocuments(docs);
+      setLoading(false);
     }
-
-    validateTokenAndLoadData();
+    init();
   }, [resolvedParams.id, token, supabase]);
 
-  if (authorized === null) {
-    return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-xs text-slate-400 font-sans uppercase tracking-widest">Verifica token di sicurezza...</div>;
-  }
+  const handleUpdateIncome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!property) return;
+    setSavingIncome(true);
+    setSuccessMsg('');
 
-  if (authorized === false) {
-    return (
-      <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full text-center space-y-4 shadow-sm">
-          <span className="text-4xl">🔒</span>
-          <h1 className="text-lg font-bold text-slate-900">Accesso Non Autorizzato</h1>
-          <p className="text-xs text-slate-500">Il token fornito non è valido o è scaduto. Richiedi un nuovo invito allo Staff Myco.</p>
-        </div>
-      </main>
-    );
-  }
+    const rentMonthly = parseFloat(grossIncome) || 0;
+    const feesMonthly = parseFloat(operatingExpenses) || 0;
 
-  const filteredDocuments = documents.filter(doc => doc.category === docCategory || (!doc.category && docCategory === 'LEGALE'));
+    const { error } = await supabase
+      .from('properties')
+      .update({
+        monthly_rent: rentMonthly,
+        management_fees: feesMonthly,
+      })
+      .eq('id', property.id);
+
+    if (!error) {
+      setSuccessMsg('Consuntivo mensile aggiornato con successo! I KPI dell\'investitore sono stati ricalcolati.');
+      setProperty({ ...property, monthly_rent: rentMonthly, management_fees: feesMonthly });
+    }
+    setSavingIncome(false);
+  };
+
+  if (loading) return <div className="min-h-screen bg-slate-50 p-8 flex justify-center items-center text-xs text-slate-400 font-sans tracking-widest uppercase">Verifica Magic Link in corso...</div>;
+  if (!partnerAssoc || !property) return <div className="min-h-screen bg-slate-50 p-8 text-xs text-red-500 font-sans">Accesso non autorizzato o Token scaduto.</div>;
+
+  const partnerRole = partnerAssoc.partner_role || 'PARTNER';
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 py-10 px-4 sm:px-8 font-sans antialiased">
+    <main className="min-h-screen bg-slate-50 text-slate-900 py-8 px-4 sm:px-8 font-sans antialiased">
       <div className="max-w-4xl mx-auto space-y-6">
 
-        {/* TOP BAR PARTNER */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        {/* HEADER AREA RISERVATA */}
+        <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <span className="text-[10px] bg-slate-100 text-slate-700 font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider">
-              Accesso Riservato Partner: {partnerInfo?.partner_role}
-            </span>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-2">{property?.title}</h1>
-            <p className="text-xs text-slate-500 font-light mt-0.5">{property?.address}, {property?.city}</p>
+            <div className="flex items-center gap-2">
+              <span className="bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase">
+                Vista Riservata Partner
+              </span>
+              <span className="text-xs text-slate-400">Ruolo: {partnerRole}</span>
+            </div>
+            <h1 className="text-2xl font-bold mt-1">{property.title}</h1>
+            <p className="text-xs text-slate-400">{property.address}, {property.city}</p>
           </div>
-          <div className="text-left sm:text-right">
-            <span className="text-xs text-slate-400 uppercase tracking-wider block">Fase Operativa</span>
-            <span className="text-sm font-semibold text-slate-900">{formatPhase(property?.current_phase)}</span>
+          <div className="text-right">
+            <span className="text-[10px] text-slate-400 uppercase">Fornitore Incaricato</span>
+            <p className="text-sm font-bold">{partnerAssoc.partner?.company_name || partnerAssoc.partner_email}</p>
           </div>
         </div>
 
-        {/* FASCICOLO DIGITALE RISERVATO */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Fascicolo Condiviso Immobile</h2>
-              <p className="text-xs text-slate-500">Consulta e scarica la documentazione abilitata per il tuo ruolo</p>
+        {/* 1. SEZIONE DEDICATA AL COMMERCIALISTA */}
+        {partnerRole === 'COMMERCIALISTA' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h2 className="text-base font-bold text-slate-900">Area Fiscale & Rendicontazione</h2>
+              <p className="text-xs text-slate-500">Accesso riservato per adempimenti fiscali, mod. F24 e contratti di locazione</p>
             </div>
 
-            {/* Segmented Control Filtro Tab */}
-            <div className="bg-slate-100 p-1 rounded-xl flex space-x-1 max-w-md w-full sm:w-auto">
-              <button
-                onClick={() => setDocCategory('LEGALE')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium transition rounded-lg ${
-                  docCategory === 'LEGALE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Legale & Rogiti
-              </button>
-              <button
-                onClick={() => setDocCategory('CANTIERE')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium transition rounded-lg ${
-                  docCategory === 'CANTIERE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Cantiere & Tecnici
-              </button>
-              <button
-                onClick={() => setDocCategory('FISCALE')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium transition rounded-lg ${
-                  docCategory === 'FISCALE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Locazioni & Fisco
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Canone Annuo Lordo Maturato</span>
+                <p className="text-xl font-bold text-slate-900 mt-1">{formatCurrency((property.monthly_rent || 0) * 12)}</p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Rif. Catastali & Regime</span>
+                <p className="text-xs font-semibold text-slate-900 mt-1">Foglio: 12 • Part: 450 • Sub: 12 (Cedolare Secca 21%)</p>
+              </div>
             </div>
-          </div>
 
-          {/* Griglia Documenti Condivisi */}
-          <div className="space-y-3">
-            {filteredDocuments.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-6 text-center">Nessun documento disponibile nella sezione {docCategory}.</p>
-            ) : (
-              filteredDocuments.map((doc) => (
-                <div key={doc.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center hover:bg-white transition">
-                  <div className="flex items-center gap-3 truncate pr-3">
-                    <span className="text-xl">📄</span>
-                    <div className="truncate">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{doc.file_name}</p>
-                      <span className="text-[10px] text-slate-400">Origine: {doc.uploaded_by_role}</span>
-                    </div>
-                  </div>
-                  <a
-                    href={doc.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-lg text-xs font-medium transition shadow-sm whitespace-nowrap min-h-[44px] flex items-center"
-                  >
-                    Download 📄
-                  </a>
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-900 uppercase">Documentazione Fiscale & Atti dell'Asset</h3>
+              {documents.filter(d => d.category === 'FISCALE' || d.category === 'LEGALE').map(doc => (
+                <div key={doc.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center text-xs">
+                  <span className="font-semibold text-slate-900">📄 {doc.file_name}</span>
+                  <a href={doc.file_url} target="_blank" className="bg-white border border-slate-200 px-3 py-1 rounded-lg font-medium">Scarica</a>
                 </div>
-              ))
-            )}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* 2. SEZIONE DEDICATA AL PROPERTY MANAGER */}
+        {partnerRole === 'PROPERTY_MANAGER' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+            <div className="border-b border-slate-100 pb-4">
+              <h2 className="text-base font-bold text-slate-900">Aggiornamento Consuntivo Mensile Rendita</h2>
+              <p className="text-xs text-slate-500">Inserisci i dati effettivi di incasso e spese per il ricalcolo automatico del ROI dell'investitore</p>
+            </div>
+
+            {successMsg && (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-medium">
+                ✓ {successMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateIncome} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Canone Incassato Mensile (€)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={grossIncome}
+                    onChange={(e) => setGrossIncome(e.target.value)}
+                    placeholder="1500.00"
+                    className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Spese Operative & Fees Mensili (€)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={operatingExpenses}
+                    onChange={(e) => setOperatingExpenses(e.target.value)}
+                    placeholder="225.00"
+                    className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-red-600"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingIncome}
+                className="bg-slate-900 text-white text-xs font-bold px-6 py-2.5 rounded-xl hover:bg-slate-800 transition"
+              >
+                {savingIncome ? 'Aggiornamento...' : 'Salva Consuntivo Mensile'}
+              </button>
+            </form>
+          </div>
+        )}
 
       </div>
     </main>
