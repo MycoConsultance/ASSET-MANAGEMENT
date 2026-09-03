@@ -13,32 +13,22 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [documents, setDocuments] = useState<any[]>([]);
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [mediaItems, setMediaItems] = useState<any[]>([]);
-  const [assignedPartners, setAssignedPartners] = useState<any[]>([]);
   const [allPartners, setAllPartners] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
 
-  const [docCategory, setDocCategory] = useState<'LEGALE' | 'CANTIERE' | 'FISCALE'>('LEGALE');
-
-  // Modal Partner Contestuale State
+  // Modal Partner State
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
+  const [selectedPartnerDetail, setSelectedPartnerDetail] = useState<any | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
-
-  // Modal Capitolato State
-  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
-  const [itemDescription, setItemDescription] = useState('');
-  const [itemCategory, setItemCategory] = useState('OPERE_EDILI');
-  const [itemBudgeted, setItemBudgeted] = useState('');
 
   const fetchPropertyData = async (propId: string) => {
     const { data: prop } = await supabase.from('properties').select('*').eq('id', propId).single();
     if (prop) {
       setProperty(prop);
-      // Carica fornitori attivi per la stessa città
       const { data: cityPartners } = await supabase.from('partners').select('*').ilike('city', prop.city || 'Milano');
       if (cityPartners) setAllPartners(cityPartners);
     }
@@ -51,9 +41,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: media } = await supabase.from('property_media').select('*').eq('property_id', propId).order('created_at', { ascending: false });
     if (media) setMediaItems(media);
-
-    const { data: propPartners } = await supabase.from('property_partners').select('*, partner:partner_id(*)').eq('property_id', propId);
-    if (propPartners) setAssignedPartners(propPartners);
   };
 
   useEffect(() => {
@@ -71,6 +58,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
   const openContextualPartnerModal = (category: string) => {
     setSelectedCategoryFilter(category);
+    setSelectedPartnerDetail(null);
     setIsPartnerModalOpen(true);
   };
 
@@ -88,32 +76,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
     if (!error) {
       setIsPartnerModalOpen(false);
+      setSelectedPartnerDetail(null);
       await fetchPropertyData(property.id);
     }
     setAssigningId(null);
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !property?.id) return;
-    setUploading(true);
-    try {
-      const filePath = `${property.id}/${Date.now()}_${file.name}`;
-      await supabase.storage.from('property-documents').upload(filePath, file);
-      const { data: publicUrlData } = supabase.storage.from('property-documents').getPublicUrl(filePath);
-      
-      await supabase.from('property_documents').insert({
-        property_id: property.id,
-        file_name: file.name,
-        file_url: publicUrlData.publicUrl,
-        uploaded_by_role: userRole === 'STAFF' || userRole === 'ADMIN' ? 'STAFF' : 'INVESTOR',
-        category: docCategory,
-      });
-
-      await fetchPropertyData(property.id);
-    } finally {
-      setUploading(false);
-    }
   };
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>, mediaType: string) => {
@@ -144,7 +110,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const currentPhaseId = property.current_phase || 'ACQUISTO_DEAL';
   const currentStageObj = LIFECYCLE_STAGES.find(s => s.id === currentPhaseId) || LIFECYCLE_STAGES[0];
 
-  // 2. CALCOLO AUTOMATICO ROI NETTO %
   const monthlyRent = Number(property.monthly_rent || 0);
   const grossRentAnnual = monthlyRent * 12;
   const managementExpensesAnnual = Number(property.management_fees || (grossRentAnnual * 0.15));
@@ -212,34 +177,27 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* 2. SINTESI FINANZIARIA CON CALCOLO AUTOMATICO ROI NETTO % */}
+        {/* SINTESI FINANZIARIA */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Capitale Investito</span>
             <p className="text-xl font-semibold text-slate-900 mt-1">{formatCurrency(totalCapitalInvested)}</p>
-            <span className="text-[10px] text-slate-400 mt-1 block">Acquisto + Restyling</span>
           </div>
-
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Canone Incassato</span>
             <p className="text-xl font-semibold text-slate-900 mt-1">{formatCurrency(grossRentAnnual)}</p>
-            <span className="text-[10px] text-slate-400 mt-1 block">Lordo Annuale</span>
           </div>
-
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-medium text-emerald-600 uppercase tracking-wider">Netto Bonificato</span>
             <p className="text-xl font-bold text-emerald-600 mt-1">{formatCurrency(netRentAnnual)}</p>
-            <span className="text-[10px] text-emerald-700/70 mt-1 block">Accreditato all'investitore</span>
           </div>
-
           <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-md">
             <span className="text-xs font-medium text-amber-400 uppercase tracking-wider">ROI Netto Reale %</span>
             <p className="text-2xl font-black text-white mt-1">{realRoiNetPercent}%</p>
-            <span className="text-[10px] text-slate-400 mt-1 block">Calcolato sui dati reali</span>
           </div>
         </div>
 
-        {/* 3. SEZIONE MEDIA & GALLERIA FOTO + INGAGGI FOTOGRAFO */}
+        {/* GALLERIA MEDIA & SELEZIONE CONTESTUALE */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-4 gap-2">
             <div>
@@ -247,7 +205,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
               <p className="text-xs text-slate-500">Fotografie dello stato di fatto, rendering di progetto e shoot finale</p>
             </div>
 
-            {/* FORNITORE CONTESTUALE: FOTOGRAFO */}
             <button
               onClick={() => openContextualPartnerModal('FOTOGRAFO')}
               className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl hover:bg-amber-400 transition shadow-sm"
@@ -269,123 +226,160 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
               mediaItems.map((item) => (
                 <div key={item.id} className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group">
                   <img src={item.file_url} alt={item.file_name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                  <span className="absolute bottom-2 left-2 bg-slate-900/80 text-white text-[9px] font-bold px-2 py-0.5 rounded-md">
-                    {item.type}
-                  </span>
                 </div>
               ))
             )}
           </div>
         </div>
 
-        {/* 4. SEZIONE CANTIERE & RESTYLING + FORNITORE CONTESTUALE IMPRESA */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Avanzamento Cantiere & SAL</h2>
-              <p className="text-xs text-slate-500">Stato dei lavori e restyling immobiliare</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => openContextualPartnerModal('IMPRESA_EDILE')}
-                className="bg-slate-100 text-slate-800 text-xs font-semibold px-3 py-2 rounded-xl hover:bg-slate-200 transition"
-              >
-                🛠️ Seleziona Impresa Edile
-              </button>
-            </div>
+        {/* CANTIERE & FISCALE */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Avanzamento Cantiere & SAL</h2>
+            <p className="text-xs text-slate-500">Seleziona un'impresa qualificata per il restyling</p>
           </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  <th className="pb-3 pr-4">Descrizione Lavoro</th>
-                  <th className="pb-3 pr-4">Categoria</th>
-                  <th className="pb-3 pr-4">Budget Previsto</th>
-                  <th className="pb-3 text-right">Avanzamento %</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                {budgetItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50 transition">
-                    <td className="py-3.5 pr-4 font-semibold text-slate-900">{item.description}</td>
-                    <td className="py-3.5 pr-4"><span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full uppercase">{item.category}</span></td>
-                    <td className="py-3.5 pr-4">{formatCurrency(item.budgeted_amount)}</td>
-                    <td className="py-3.5 text-right font-bold text-slate-900">{item.sal_percentage}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <button onClick={() => openContextualPartnerModal('IMPRESA_EDILE')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl">
+            🛠️ Seleziona Impresa Edile
+          </button>
         </div>
 
-        {/* 5. SEZIONE FISCALE & CONTRATTI + FORNITORE CONTESTUALE COMMERCIALISTA */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Fascicolo Fiscale & Contabilità</h2>
-              <p className="text-xs text-slate-500">Documentazione ufficiale e moduli tributari custoditi dal Concierge</p>
-            </div>
-            <button
-              onClick={() => openContextualPartnerModal('COMMERCIALISTA')}
-              className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:bg-slate-800 transition"
-            >
-              💼 Seleziona Commercialista Partner
-            </button>
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Fascicolo Fiscale & Contabilità</h2>
+            <p className="text-xs text-slate-500">Gestione tributaria con commercialisti certificati</p>
           </div>
-
-          <div className="space-y-3">
-            {documents.filter(d => d.category === 'FISCALE').map((doc) => (
-              <div key={doc.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center">
-                <span className="text-xs font-semibold text-slate-900">📄 {doc.file_name}</span>
-                <a href={doc.file_url} target="_blank" className="bg-white border border-slate-200 text-xs px-3 py-1.5 rounded-lg font-medium">Download</a>
-              </div>
-            ))}
-          </div>
+          <button onClick={() => openContextualPartnerModal('COMMERCIALISTA')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl">
+            💼 Seleziona Commercialista Partner
+          </button>
         </div>
 
-        {/* MODALE PARTNER CONTESTUALE FILTRATO */}
+        {/* MODALE PARTNER CON DETTAGLIO / SCHEDA COMPLETA */}
         {isPartnerModalOpen && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl space-y-6 max-h-[90vh] overflow-y-auto border border-slate-200">
+              
+              {/* HEADER MODALE */}
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                 <div>
+                  {selectedPartnerDetail ? (
+                    <button onClick={() => setSelectedPartnerDetail(null)} className="text-xs font-bold text-slate-500 hover:text-slate-900 mb-1">
+                      ← Torna all'elenco fornitori
+                    </button>
+                  ) : (
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Network Accreditation</span>
+                  )}
                   <h3 className="text-base font-bold text-slate-900">
-                    Fornitori {selectedCategoryFilter || 'Network'} su {property.city}
+                    {selectedPartnerDetail ? selectedPartnerDetail.company_name : `Fornitori ${selectedCategoryFilter || ''} su ${property.city}`}
                   </h3>
-                  <p className="text-xs text-slate-500">Partner accreditati selezionati per questa specifica esigenza</p>
                 </div>
-                <button type="button" onClick={() => setIsPartnerModalOpen(false)} className="text-slate-400 hover:text-slate-900 text-sm">✕</button>
+                <button type="button" onClick={() => setIsPartnerModalOpen(false)} className="text-slate-400 hover:text-slate-900 text-sm font-bold">✕</button>
               </div>
 
-              <div className="space-y-3">
-                {filteredPartners.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-6 text-center">
-                    Nessun partner accreditato presente per la categoria {selectedCategoryFilter} su {property.city}.
-                  </p>
-                ) : (
-                  filteredPartners.map((p) => (
-                    <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center gap-4">
-                      <div>
-                        {p.is_myco_recommended && (
-                          <span className="inline-block bg-amber-500 text-slate-950 font-bold text-[9px] px-2 py-0.5 rounded-full uppercase mb-1">
-                            ★ {p.badge_label || 'Myco Choice'}
-                          </span>
-                        )}
-                        <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
-                        <p className="text-xs text-slate-500 line-clamp-1">{p.description}</p>
+              {/* VISTA 1: LISTA FORNITORI CON PULSANTE "VEDI SCHEDA" */}
+              {!selectedPartnerDetail && (
+                <div className="space-y-3">
+                  {filteredPartners.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic py-6 text-center">
+                      Nessun partner accreditato presente per la categoria {selectedCategoryFilter} su {property.city}.
+                    </p>
+                  ) : (
+                    filteredPartners.map((p) => (
+                      <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center gap-4">
+                        <div>
+                          {p.is_myco_recommended && (
+                            <span className="inline-block bg-amber-500 text-slate-950 font-bold text-[9px] px-2 py-0.5 rounded-full uppercase mb-1">
+                              ★ {p.badge_label || 'Myco Choice'}
+                            </span>
+                          )}
+                          <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
+                          <p className="text-xs text-slate-500 line-clamp-1">{p.description}</p>
+                          <div className="flex items-center gap-1 text-xs text-amber-500 font-bold mt-1">
+                            ★ {p.rating} <span className="text-slate-400 font-normal">({p.reviews_count || 12} recensioni verificate)</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <button
+                            onClick={() => setSelectedPartnerDetail(p)}
+                            className="bg-white border border-slate-200 text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-100 transition whitespace-nowrap"
+                          >
+                            Vedi Scheda & Lavori 👁️
+                          </button>
+                          <button
+                            onClick={() => handleAssignPartner(p)}
+                            disabled={assigningId === p.id}
+                            className="bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-800 transition whitespace-nowrap"
+                          >
+                            {assigningId === p.id ? 'In corso...' : 'Associa subito'}
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => handleAssignPartner(p)}
-                        disabled={assigningId === p.id}
-                        className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:bg-slate-800 transition whitespace-nowrap"
-                      >
-                        {assigningId === p.id ? 'In corso...' : 'Associa & Invita'}
-                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* VISTA 2: SCHEDA DI DETTAGLIO FORNITORE */}
+              {selectedPartnerDetail && (
+                <div className="space-y-6">
+                  {/* BADGE & RATING */}
+                  <div className="flex justify-between items-start bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div>
+                      {selectedPartnerDetail.is_myco_recommended && (
+                        <span className="bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase">
+                          ★ {selectedPartnerDetail.badge_label || 'Consigliato da Myco'}
+                        </span>
+                      )}
+                      <h3 className="text-lg font-bold text-slate-900 mt-1">{selectedPartnerDetail.company_name}</h3>
+                      <p className="text-xs text-slate-500">{selectedPartnerDetail.category} • {selectedPartnerDetail.city}</p>
                     </div>
-                  ))
-                )}
-              </div>
+                    <div className="text-right">
+                      <div className="text-base font-black text-slate-900">★ {selectedPartnerDetail.rating} / 5.0</div>
+                      <span className="text-[10px] text-emerald-600 font-semibold">100% Partner Verificato Myco</span>
+                    </div>
+                  </div>
+
+                  {/* BIO ESTESA */}
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Presentazione & Competenza</h4>
+                    <p className="text-xs text-slate-700 leading-relaxed">
+                      {selectedPartnerDetail.bio_full || selectedPartnerDetail.description}
+                    </p>
+                  </div>
+
+                  {/* PORTFOLIO FOTO / LAVORI */}
+                  {selectedPartnerDetail.portfolio_urls && selectedPartnerDetail.portfolio_urls.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Portfolio Lavori Realizzati</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {selectedPartnerDetail.portfolio_urls.map((url: string, i: number) => (
+                          <div key={i} className="aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                            <img src={url} alt="Portfolio Work" className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TASTO AZIONE INGAGGI */}
+                  <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                    <button
+                      onClick={() => setSelectedPartnerDetail(null)}
+                      className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition"
+                    >
+                      Torna Indietro
+                    </button>
+                    <button
+                      onClick={() => handleAssignPartner(selectedPartnerDetail)}
+                      disabled={assigningId === selectedPartnerDetail.id}
+                      className="bg-slate-900 text-white text-xs font-bold px-6 py-2.5 rounded-xl hover:bg-slate-800 transition"
+                    >
+                      {assigningId === selectedPartnerDetail.id ? 'In corso...' : 'Associa & Invita all\'Asset'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         )}
