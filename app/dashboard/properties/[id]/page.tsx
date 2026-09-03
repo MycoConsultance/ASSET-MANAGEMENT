@@ -14,12 +14,11 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [mediaItems, setMediaItems] = useState<any[]>([]);
   const [allPartners, setAllPartners] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [deadlines, setDeadlines] = useState<any[]>([]);
+  const [owners, setOwners] = useState<any[]>([]);
+  const [quotes, setQuotes] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-  const [userRole, setUserRole] = useState<string>('');
+  const [isLatePayment, setIsLatePayment] = useState(false);
 
   // Modal Partner State
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
@@ -44,20 +43,15 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     const { data: media } = await supabase.from('property_media').select('*').eq('property_id', propId).order('created_at', { ascending: false });
     if (media) setMediaItems(media);
 
-    const { data: logData } = await supabase.from('property_logs').select('*').eq('property_id', propId).order('created_at', { ascending: false });
-    if (logData) setLogs(logData);
+    const { data: ownerData } = await supabase.from('property_owners').select('*, profile:user_id(*)').eq('property_id', propId);
+    if (ownerData) setOwners(ownerData);
 
-    const { data: deadlineData } = await supabase.from('property_deadlines').select('*').eq('property_id', propId).order('due_date', { ascending: true });
-    if (deadlineData) setDeadlines(deadlineData);
+    const { data: quoteData } = await supabase.from('property_quotes').select('*, partner:partner_id(*)').eq('property_id', propId);
+    if (quoteData) setQuotes(quoteData);
   };
 
   useEffect(() => {
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-        if (profile) setUserRole(profile.role);
-      }
       await fetchPropertyData(resolvedParams.id);
       setLoading(false);
     }
@@ -90,22 +84,19 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     setAssigningId(null);
   };
 
-  // APPROVAZIONE VARIAZIONE CAPITOLATO (EXTRA-BUDGET)
-  const handleApproveVariance = async (itemId: string) => {
-    await supabase.from('property_budget_items').update({ variance_status: 'APPROVED' }).eq('id', itemId);
-    await fetchPropertyData(property.id);
-  };
-
   if (loading) return <div className="min-h-screen bg-slate-50 p-8 flex justify-center items-center text-xs text-slate-400 font-sans tracking-widest uppercase">Caricamento asset...</div>;
   if (!property) return <div className="min-h-screen bg-slate-50 p-8 text-xs text-red-500 font-sans">Immobile non trovato.</div>;
 
   const currentPhaseId = property.current_phase || 'ACQUISTO_DEAL';
   const currentStageObj = LIFECYCLE_STAGES.find(s => s.id === currentPhaseId) || LIFECYCLE_STAGES[0];
 
-  const pendingVariances = budgetItems.filter(i => i.is_variance && i.variance_status === 'PENDING_APPROVAL');
-
   const monthlyRent = Number(property.monthly_rent || 0);
   const grossRentAnnual = monthlyRent * 12;
+
+  // 4.1 CALCOLATORE FISCALE CONTESTUALE (CEDOLARE SECCA)
+  const taxAgevolata10 = grossRentAnnual * 0.10;
+  const taxOrdinaria21 = grossRentAnnual * 0.21;
+
   const managementExpensesAnnual = Number(property.management_fees || (grossRentAnnual * 0.15));
   const netRentAnnual = grossRentAnnual - managementExpensesAnnual;
 
@@ -137,9 +128,15 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
           <div className="flex items-center gap-3">
             <a
+              href={`/api/properties/${property.id}/download-archive`}
+              className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5"
+            >
+              📦 Scarica Archivio .ZIP
+            </a>
+            <a
               href={`/api/properties/${property.id}/pdf`}
               target="_blank"
-              className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-sm font-medium transition shadow-sm flex items-center gap-1.5"
+              className="bg-slate-900 text-white hover:bg-slate-800 px-4 py-2 rounded-xl text-xs font-semibold transition shadow-sm flex items-center gap-1.5"
             >
               📄 Executive Report PDF
             </a>
@@ -171,29 +168,21 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* 3. CARD APPROVAZIONE EXTRA-BUDGET (VARIAZIONE CAPITOLATO) */}
-        {pendingVariances.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase">
-                Approvazione Richiesta • Validata da Myco
-              </span>
-            </div>
-            {pendingVariances.map((varItem) => (
-              <div key={varItem.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border border-amber-200 gap-3">
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900">{varItem.description}</h4>
-                  <p className="text-xs text-slate-500">{varItem.variance_reason || 'Variazione di cantiere necessaria'}</p>
-                  <span className="text-xs font-bold text-amber-700 mt-1 block">Importo: +{formatCurrency(varItem.budgeted_amount)}</span>
+        {/* 2.1 ASSET OWNERSHIP & CO-PROPRIETÀ WIDGET */}
+        {owners.length > 0 && (
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Asset Ownership & Co-Proprietà</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {owners.map(o => (
+                <div key={o.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                  <div>
+                    <span className="font-bold text-slate-900 block">{o.profile?.full_name || 'Socio / Inintestatario'}</span>
+                    <span className="text-[10px] text-slate-400">{o.is_primary_contact ? 'Referente Principale' : 'Co-Proprietario'}</span>
+                  </div>
+                  <span className="font-black text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200">{o.ownership_percentage}%</span>
                 </div>
-                <button
-                  onClick={() => handleApproveVariance(varItem.id)}
-                  className="bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-slate-800 transition shadow-sm whitespace-nowrap"
-                >
-                  Approva Variazione 1-Click
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -217,80 +206,69 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* 4. BLOCCO WIDGET: PROSSIME SCADENZE & LOG DI BORDO */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* WIDGET PROSSIME SCADENZE */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">🗓️ Prossime Scadenze Imminenti</h3>
-              <p className="text-xs text-slate-500">I 3 eventi chiave programmati per questo asset</p>
+        {/* 4.1 CALCOLATORE FISCALE CONTESTUALE (CEDOLARE SECCA) */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Stima Imposta & Regime Fiscale</h2>
+              <p className="text-xs text-slate-500">Proiezione imposte sul canone annuo maturo ({formatCurrency(grossRentAnnual)})</p>
             </div>
-            <div className="space-y-3">
-              {deadlines.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">Nessuna scadenza in programma.</p>
-              ) : (
-                deadlines.slice(0, 3).map((d) => (
-                  <div key={d.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
-                    <div>
-                      <span className="font-bold text-slate-900 block">{d.title}</span>
-                      <span className="text-[10px] text-slate-500 uppercase">{d.category}</span>
-                    </div>
-                    <span className="bg-slate-900 text-white font-mono font-bold px-2.5 py-1 rounded-lg text-[11px]">
-                      {new Date(d.due_date).toLocaleDateString('it-IT')}
-                    </span>
-                  </div>
-                ))
-              )}
+            <span className="bg-slate-100 text-slate-900 font-bold text-xs px-3 py-1 rounded-lg">Persona Fisica</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Cedolare Agevolata (10%)</span>
+              <p className="text-lg font-bold text-slate-900 mt-1">{formatCurrency(taxAgevolata10)}/anno</p>
+              <span className="text-[10px] text-slate-400 block mt-1">Valida per contratti transitori / canone concordato</span>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Cedolare Ordinaria (21%)</span>
+              <p className="text-lg font-bold text-slate-900 mt-1">{formatCurrency(taxOrdinaria21)}/anno</p>
+              <span className="text-[10px] text-slate-400 block mt-1">Valida per regime libero 4+4 o affittacamere</span>
             </div>
           </div>
 
-          {/* WIDGET LOG DI BORDO */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">📋 Log di Bordo (Feed Sola Lettura)</h3>
-              <p className="text-xs text-slate-500">Tracciabilità storica delle attività per la massima trasparenza</p>
-            </div>
-            <div className="space-y-2 max-h-[160px] overflow-y-auto">
-              {logs.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">Nessuna attività registrata nel log.</p>
-              ) : (
-                logs.map((l) => (
-                  <div key={l.id} className="text-xs border-b border-slate-100 pb-2 flex justify-between items-start">
-                    <span className="text-slate-700 font-medium">{l.event_title}</span>
-                    <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap ml-2">
-                      {new Date(l.created_at).toLocaleDateString('it-IT')}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex justify-between items-center">
+            <span>Stai applicando la cedolare agevolata al 10%? Richiedi la verifica dei requisiti con il Commercialista.</span>
+            <button onClick={() => openContextualPartnerModal('COMMERCIALISTA')} className="bg-amber-500 text-slate-950 font-bold text-[10px] px-3 py-1.5 rounded-lg whitespace-nowrap ml-2">
+              Verifica con Commercialista
+            </button>
           </div>
-
         </div>
 
-        {/* GALLERIA MEDIA */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-4 gap-2">
+        {/* 4.2 TRACCIAMENTO MOROSITÀ & TUTELA LEGALE 1-CLICK */}
+        <div className={`rounded-2xl border p-6 shadow-sm space-y-4 transition ${isLatePayment ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+          <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Galleria Media & Valorizzazione Asset</h2>
-              <p className="text-xs text-slate-500">Fotografie dello stato di fatto, rendering di progetto e shoot finale</p>
+              <h2 className={`text-base font-bold ${isLatePayment ? 'text-red-900' : 'text-slate-900'}`}>Stato Incasso Locazione Transitoria</h2>
+              <p className="text-xs text-slate-500">Monitoraggio regolarità canoni conduttore corporate</p>
             </div>
-            <button onClick={() => openContextualPartnerModal('FOTOGRAFO')} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl">
-              📷 Ingaggia Fotografo / Home Stager
+            <button
+              onClick={() => setIsLatePayment(!isLatePayment)}
+              className="text-[10px] font-semibold text-slate-400 hover:text-slate-900 uppercase underline"
+            >
+              Simula Stato {isLatePayment ? 'Regolare' : 'In Ritardo'}
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {mediaItems.map((item) => (
-              <div key={item.id} className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
-                <img src={item.file_url} alt={item.file_name} className="w-full h-full object-cover" />
+          {isLatePayment && (
+            <div className="p-4 bg-white rounded-xl border border-red-200 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-red-700">
+                ⚠️ Segnalato ritardo nel pagamento del canone mensile.
               </div>
-            ))}
-          </div>
+              <button
+                onClick={() => openContextualPartnerModal('COMMERCIALISTA')}
+                className="w-full sm:w-auto bg-red-600 text-white font-bold text-xs px-5 py-2.5 rounded-xl hover:bg-red-700 transition"
+              >
+                ⚖️ Richiedi Assistenza Legale / Tutela Morosità 1-Click
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* SEZIONI CONTESTUALI FORNITORI */}
+        {/* SEZIONI FORNITORI CONTESTUALI */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
           <div>
             <h2 className="text-base font-bold text-slate-900">Avanzamento Cantiere & SAL</h2>
@@ -298,16 +276,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
           <button onClick={() => openContextualPartnerModal('IMPRESA_EDILE')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl">
             🛠️ Seleziona Impresa Edile
-          </button>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Fascicolo Fiscale & Contabilità</h2>
-            <p className="text-xs text-slate-500">Gestione tributaria con commercialisti certificati</p>
-          </div>
-          <button onClick={() => openContextualPartnerModal('COMMERCIALISTA')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl">
-            💼 Seleziona Commercialista Partner
           </button>
         </div>
 
@@ -327,7 +295,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                       <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
                       <p className="text-xs text-slate-500">{p.description}</p>
                     </div>
-                    <button onClick={() => handleAssignPartner(p)} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl">
+                    <button onClick={() => handleAssignPartner(p)} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 parent-xl">
                       Associa
                     </button>
                   </div>
