@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { formatCurrency, LIFECYCLE_STAGES } from '@/lib/formatters';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-// Dati simulati per la curva di rendimento del portafoglio (12 mesi)
 const PERFORMANCE_DATA = [
   { month: 'Set', capitale: 150000, rendimento: 1200 },
   { month: 'Ott', capitale: 150000, rendimento: 2400 },
@@ -63,125 +62,127 @@ export default function PropertiesDashboardPage() {
     : '0.00';
 
   return (
-    <main className="min-h-screen bg-[#F8FAFC] text-slate-900 py-10 px-4 sm:px-8 font-sans antialiased tracking-tight">
+    // STRATO 1: SFONDO CANVAS SLATE-100 CONFORME
+    <main className="min-h-screen bg-slate-100 text-slate-900 py-10 px-4 sm:px-8 font-sans antialiased tracking-tight">
       <div className="max-w-6xl mx-auto space-y-8">
         
         {/* HEADER TOP BAR */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+            <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest block">
               Private Wealth Asset Control
             </span>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight mt-0.5">
+            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5">
               Sintesi Patrimonio & Asset
             </h1>
           </div>
           <div className="flex items-center gap-3">
             <Link
               href="/dashboard/settings"
-              className="text-xs font-semibold bg-white border border-slate-200/80 px-4 py-2.5 rounded-2xl text-slate-700 hover:bg-slate-50 transition shadow-xs"
+              className="text-xs font-bold bg-white border border-slate-300 px-4 py-2.5 rounded-xl text-slate-800 hover:bg-slate-50 transition shadow-xs"
             >
               ⚙️ Impostazioni
             </Link>
             <Link
               href="/admin/partners"
-              className="text-xs font-semibold bg-slate-900 text-white px-4 py-2.5 rounded-2xl hover:bg-slate-800 transition shadow-xs"
+              className="text-xs font-bold bg-slate-900 text-white px-4 py-2.5 rounded-xl hover:bg-slate-800 transition shadow-xs"
             >
               Pannello Staff
             </Link>
           </div>
         </div>
 
-        {/* 1. PALETTE & BANNER SUMMARY CONTAINER (LIGHT HIGH-END) */}
-        <div className="bg-white rounded-3xl p-8 border border-slate-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] space-y-8">
+        {/* STRATO 2: BANNER CARD WHITE INCASTONATO */}
+        <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-md space-y-8">
           
           {/* TOP KPI GRID */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-6 border-b border-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-6 border-b border-slate-200">
             <div>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                 Capitale Totale Deployato
               </span>
-              <p className="text-3xl font-bold text-slate-900 tracking-tight mt-1">
+              <p className="text-3xl font-black text-slate-900 tracking-tight mt-1">
                 {formatCurrency(totalInvested)}
               </p>
-              <span className="text-[11px] text-slate-400 mt-1 block font-normal">
+              <span className="text-[11px] text-slate-500 font-medium mt-1 block">
                 Valore cumulativo d'acquisto
               </span>
             </div>
 
             <div>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                 Netto Bonificato Annuale
               </span>
-              <p className="text-3xl font-bold text-emerald-600 tracking-tight mt-1">
+              <p className="text-3xl font-black text-emerald-700 tracking-tight mt-1">
                 {formatCurrency(totalNetRent)}
               </p>
-              <span className="text-[11px] text-emerald-700/70 mt-1 block font-normal">
+              <span className="text-[11px] text-emerald-800 font-semibold mt-1 block">
                 Accreditato su tutti gli asset
               </span>
             </div>
 
             <div>
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
                 ROI Medio Ponderato
               </span>
-              <p className="text-3xl font-bold text-emerald-600 tracking-tight mt-1">
+              <p className="text-3xl font-black text-emerald-700 tracking-tight mt-1">
                 {weightedAverageRoi}%
               </p>
-              <span className="text-[11px] text-slate-400 mt-1 block font-normal">
+              <span className="text-[11px] text-slate-500 font-medium mt-1 block">
                 Resa globale del portafoglio
               </span>
             </div>
           </div>
 
-          {/* 2. PORTFOLIO PERFORMANCE CHART (RECHARTS SFUMATO) */}
+          {/* STYLING GRAFICO RECHARTS NITIDO */}
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 tracking-tight">Curva di Rendimento Patrimonio</h3>
-                <p className="text-xs text-slate-400">Andamento del capitale investito vs rendita cumulata nel tempo</p>
+                <p className="text-xs text-slate-600 font-medium">Andamento del capitale investito vs rendita cumulata</p>
               </div>
 
               {/* TIMELINE TOGGLE */}
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/60 text-xs font-semibold">
+              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-300 text-xs font-bold">
                 <button
                   onClick={() => setTimeframe('1A')}
-                  className={`px-3 py-1 rounded-lg transition ${timeframe === '1A' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`px-3 py-1 rounded-lg transition ${timeframe === '1A' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                   1A
                 </button>
                 <button
                   onClick={() => setTimeframe('3A')}
-                  className={`px-3 py-1 rounded-lg transition ${timeframe === '3A' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`px-3 py-1 rounded-lg transition ${timeframe === '3A' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                   3A
                 </button>
                 <button
                   onClick={() => setTimeframe('ALL')}
-                  className={`px-3 py-1 rounded-lg transition ${timeframe === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`px-3 py-1 rounded-lg transition ${timeframe === 'ALL' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
                 >
                   Tutto
                 </button>
               </div>
             </div>
 
-            {/* AREA CHART CONTAINER */}
+            {/* AREA CHART CON GRIGLIA & VERDE SMERALDO PROFONDO */}
             <div className="h-64 w-full pt-4">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={PERFORMANCE_DATA} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="emeraldGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0.0}/>
+                    <linearGradient id="emeraldGradientDeep" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#059669" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#059669" stopOpacity={0.0}/>
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val) => `€${val/1000}k`} />
+                  <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="month" stroke="#475569" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#475569" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} tickFormatter={(val) => `€${val/1000}k`} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}
+                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #CBD5E1', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                     formatter={(value: any) => [formatCurrency(value), 'Rendimento']}
                   />
-                  <Area type="monotone" dataKey="rendimento" stroke="#10B981" strokeWidth={3} fillOpacity={1} fill="url(#emeraldGradient)" />
+                  <Area type="monotone" dataKey="rendimento" stroke="#059669" strokeWidth={3} fillOpacity={1} fill="url(#emeraldGradientDeep)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -189,16 +190,16 @@ export default function PropertiesDashboardPage() {
 
         </div>
 
-        {/* 3. CARD IMMOBILE PHOTO-FIRST GRID */}
+        {/* LISTA ASSET PHOTO-FIRST */}
         <div className="space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-200/60 pb-3">
-            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+          <div className="flex justify-between items-center border-b border-slate-300 pb-2">
+            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
               Asset in Portafoglio ({properties.length})
             </h2>
           </div>
 
           {loading ? (
-            <div className="py-12 text-center text-xs text-slate-400 font-medium uppercase tracking-widest">
+            <div className="py-12 text-center text-xs text-slate-500 font-bold uppercase tracking-widest">
               Caricamento patrimonio in corso...
             </div>
           ) : (
@@ -215,59 +216,59 @@ export default function PropertiesDashboardPage() {
                   <Link
                     key={p.id}
                     href={`/dashboard/properties/${p.id}`}
-                    className="group bg-white rounded-3xl border border-slate-200/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.03)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.06)] transition duration-300 space-y-4 block"
+                    className="group bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition duration-200 space-y-4 block"
                   >
-                    {/* FOTO IMMOBILE FORMATO 16:9 */}
-                    <div className="w-full aspect-video rounded-2xl overflow-hidden bg-slate-100 border border-slate-200/60 relative">
+                    {/* FOTO IMMOBILE 16:9 CON BADGE SCURO */}
+                    <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-200 relative">
                       {p.cover_image ? (
                         <img
                           src={p.cover_image}
                           alt={p.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                         />
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50 text-slate-400 p-4 text-center">
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4 text-center bg-slate-900">
                           <span className="text-3xl mb-1">🏛️</span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Architettura Myco
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            MYCO PRIVATE WEALTH
                           </span>
                         </div>
                       )}
 
-                      {/* BADGE DI FASE STONATO OVERLAY */}
-                      <span className="absolute top-3 right-3 bg-white/90 backdrop-blur-md text-amber-900 border border-amber-200/60 text-xs px-3 py-1 rounded-full font-semibold shadow-xs">
+                      {/* BADGE DI FASE PIENO AD ALTO STACCO */}
+                      <span className="absolute top-3 right-3 bg-slate-900 text-white font-bold text-xs px-3 py-1 rounded-full shadow-md border border-slate-800">
                         {stageObj.label}
                       </span>
                     </div>
 
-                    {/* INFORMAZIONI E METRICHE */}
+                    {/* METRICHE ASSET */}
                     <div className="space-y-3">
                       <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
                           {p.city}
                         </span>
-                        <h3 className="text-lg font-bold text-slate-900 group-hover:text-emerald-600 transition tracking-tight mt-0.5">
+                        <h3 className="text-xl font-bold text-slate-900 group-hover:text-emerald-700 transition tracking-tight mt-0.5">
                           {p.title}
                         </h3>
-                        <p className="text-xs text-slate-500 font-normal">
+                        <p className="text-xs text-slate-600 font-medium">
                           {p.address}
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 text-xs">
+                      <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-200 text-xs">
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-semibold">Valore Asset</span>
+                          <span className="text-slate-600 block text-[10px] uppercase font-bold">Valore Asset</span>
                           <p className="font-bold text-slate-900 mt-0.5">{formatCurrency(p.price || 0)}</p>
                         </div>
 
                         <div>
-                          <span className="text-slate-400 block text-[10px] uppercase font-semibold">Canone Incassato</span>
+                          <span className="text-slate-600 block text-[10px] uppercase font-bold">Canone Incassato</span>
                           <p className="font-bold text-slate-900 mt-0.5">{formatCurrency(grossAnnual)}/a</p>
                         </div>
 
                         <div>
-                          <span className="text-emerald-600 block text-[10px] uppercase font-bold">Netto Bonificato</span>
-                          <p className="font-bold text-emerald-600 mt-0.5">{formatCurrency(netAnnual)}/a</p>
+                          <span className="text-emerald-700 block text-[10px] uppercase font-bold">Netto Bonificato</span>
+                          <p className="font-bold text-emerald-700 mt-0.5">{formatCurrency(netAnnual)}/a</p>
                         </div>
                       </div>
                     </div>
