@@ -14,6 +14,8 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [budgetItems, setBudgetItems] = useState<any[]>([]);
   const [mediaItems, setMediaItems] = useState<any[]>([]);
   const [allPartners, setAllPartners] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [deadlines, setDeadlines] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -41,6 +43,12 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: media } = await supabase.from('property_media').select('*').eq('property_id', propId).order('created_at', { ascending: false });
     if (media) setMediaItems(media);
+
+    const { data: logData } = await supabase.from('property_logs').select('*').eq('property_id', propId).order('created_at', { ascending: false });
+    if (logData) setLogs(logData);
+
+    const { data: deadlineData } = await supabase.from('property_deadlines').select('*').eq('property_id', propId).order('due_date', { ascending: true });
+    if (deadlineData) setDeadlines(deadlineData);
   };
 
   useEffect(() => {
@@ -82,26 +90,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     setAssigningId(null);
   };
 
-  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>, mediaType: string) => {
-    const file = e.target.files?.[0];
-    if (!file || !property?.id) return;
-    setUploadingMedia(true);
-    try {
-      const filePath = `media/${property.id}/${Date.now()}_${file.name}`;
-      await supabase.storage.from('property-documents').upload(filePath, file);
-      const { data: publicUrlData } = supabase.storage.from('property-documents').getPublicUrl(filePath);
-
-      await supabase.from('property_media').insert({
-        property_id: property.id,
-        file_name: file.name,
-        file_url: publicUrlData.publicUrl,
-        type: mediaType,
-      });
-
-      await fetchPropertyData(property.id);
-    } finally {
-      setUploadingMedia(false);
-    }
+  // APPROVAZIONE VARIAZIONE CAPITOLATO (EXTRA-BUDGET)
+  const handleApproveVariance = async (itemId: string) => {
+    await supabase.from('property_budget_items').update({ variance_status: 'APPROVED' }).eq('id', itemId);
+    await fetchPropertyData(property.id);
   };
 
   if (loading) return <div className="min-h-screen bg-slate-50 p-8 flex justify-center items-center text-xs text-slate-400 font-sans tracking-widest uppercase">Caricamento asset...</div>;
@@ -109,6 +101,8 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
   const currentPhaseId = property.current_phase || 'ACQUISTO_DEAL';
   const currentStageObj = LIFECYCLE_STAGES.find(s => s.id === currentPhaseId) || LIFECYCLE_STAGES[0];
+
+  const pendingVariances = budgetItems.filter(i => i.is_variance && i.variance_status === 'PENDING_APPROVAL');
 
   const monthlyRent = Number(property.monthly_rent || 0);
   const grossRentAnnual = monthlyRent * 12;
@@ -177,7 +171,33 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* SINTESI FINANZIARIA */}
+        {/* 3. CARD APPROVAZIONE EXTRA-BUDGET (VARIAZIONE CAPITOLATO) */}
+        {pendingVariances.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase">
+                Approvazione Richiesta • Validata da Myco
+              </span>
+            </div>
+            {pendingVariances.map((varItem) => (
+              <div key={varItem.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border border-amber-200 gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">{varItem.description}</h4>
+                  <p className="text-xs text-slate-500">{varItem.variance_reason || 'Variazione di cantiere necessaria'}</p>
+                  <span className="text-xs font-bold text-amber-700 mt-1 block">Importo: +{formatCurrency(varItem.budgeted_amount)}</span>
+                </div>
+                <button
+                  onClick={() => handleApproveVariance(varItem.id)}
+                  className="bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-slate-800 transition shadow-sm whitespace-nowrap"
+                >
+                  Approva Variazione 1-Click
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* METRICHE FINANZIARIE */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Capitale Investito</span>
@@ -197,42 +217,80 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* GALLERIA MEDIA & SELEZIONE CONTESTUALE */}
+        {/* 4. BLOCCO WIDGET: PROSSIME SCADENZE & LOG DI BORDO */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* WIDGET PROSSIME SCADENZE */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">🗓️ Prossime Scadenze Imminenti</h3>
+              <p className="text-xs text-slate-500">I 3 eventi chiave programmati per questo asset</p>
+            </div>
+            <div className="space-y-3">
+              {deadlines.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">Nessuna scadenza in programma.</p>
+              ) : (
+                deadlines.slice(0, 3).map((d) => (
+                  <div key={d.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                    <div>
+                      <span className="font-bold text-slate-900 block">{d.title}</span>
+                      <span className="text-[10px] text-slate-500 uppercase">{d.category}</span>
+                    </div>
+                    <span className="bg-slate-900 text-white font-mono font-bold px-2.5 py-1 rounded-lg text-[11px]">
+                      {new Date(d.due_date).toLocaleDateString('it-IT')}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* WIDGET LOG DI BORDO */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">📋 Log di Bordo (Feed Sola Lettura)</h3>
+              <p className="text-xs text-slate-500">Tracciabilità storica delle attività per la massima trasparenza</p>
+            </div>
+            <div className="space-y-2 max-h-[160px] overflow-y-auto">
+              {logs.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">Nessuna attività registrata nel log.</p>
+              ) : (
+                logs.map((l) => (
+                  <div key={l.id} className="text-xs border-b border-slate-100 pb-2 flex justify-between items-start">
+                    <span className="text-slate-700 font-medium">{l.event_title}</span>
+                    <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap ml-2">
+                      {new Date(l.created_at).toLocaleDateString('it-IT')}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+        </div>
+
+        {/* GALLERIA MEDIA */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-4 gap-2">
             <div>
               <h2 className="text-base font-bold text-slate-900">Galleria Media & Valorizzazione Asset</h2>
               <p className="text-xs text-slate-500">Fotografie dello stato di fatto, rendering di progetto e shoot finale</p>
             </div>
-
-            <button
-              onClick={() => openContextualPartnerModal('FOTOGRAFO')}
-              className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl hover:bg-amber-400 transition shadow-sm"
-            >
+            <button onClick={() => openContextualPartnerModal('FOTOGRAFO')} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl">
               📷 Ingaggia Fotografo / Home Stager
             </button>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {mediaItems.length === 0 ? (
-              <div className="col-span-4 py-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
-                <p className="text-xs text-slate-400 italic">Nessun contenuto multimediale ancora caricato.</p>
-                <label className="mt-3 cursor-pointer inline-block bg-slate-900 text-white text-xs font-medium px-4 py-2 rounded-xl">
-                  {uploadingMedia ? 'Caricamento...' : '+ Carica Immagine'}
-                  <input type="file" accept="image/*" onChange={(e) => handleMediaUpload(e, 'POST_RESTYLING')} disabled={uploadingMedia} className="hidden" />
-                </label>
+            {mediaItems.map((item) => (
+              <div key={item.id} className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                <img src={item.file_url} alt={item.file_name} className="w-full h-full object-cover" />
               </div>
-            ) : (
-              mediaItems.map((item) => (
-                <div key={item.id} className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100 group">
-                  <img src={item.file_url} alt={item.file_name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                </div>
-              ))
-            )}
+            ))}
           </div>
         </div>
 
-        {/* CANTIERE & FISCALE */}
+        {/* SEZIONI CONTESTUALI FORNITORI */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
           <div>
             <h2 className="text-base font-bold text-slate-900">Avanzamento Cantiere & SAL</h2>
@@ -253,133 +311,28 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </button>
         </div>
 
-        {/* MODALE PARTNER CON DETTAGLIO / SCHEDA COMPLETA */}
+        {/* MODALE PARTNER */}
         {isPartnerModalOpen && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl space-y-6 max-h-[90vh] overflow-y-auto border border-slate-200">
-              
-              {/* HEADER MODALE */}
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <div>
-                  {selectedPartnerDetail ? (
-                    <button onClick={() => setSelectedPartnerDetail(null)} className="text-xs font-bold text-slate-500 hover:text-slate-900 mb-1">
-                      ← Torna all'elenco fornitori
-                    </button>
-                  ) : (
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Network Accreditation</span>
-                  )}
-                  <h3 className="text-base font-bold text-slate-900">
-                    {selectedPartnerDetail ? selectedPartnerDetail.company_name : `Fornitori ${selectedCategoryFilter || ''} su ${property.city}`}
-                  </h3>
-                </div>
-                <button type="button" onClick={() => setIsPartnerModalOpen(false)} className="text-slate-400 hover:text-slate-900 text-sm font-bold">✕</button>
+                <h3 className="text-base font-bold text-slate-900">Fornitori {selectedCategoryFilter} su {property.city}</h3>
+                <button type="button" onClick={() => setIsPartnerModalOpen(false)} className="text-slate-400 font-bold">✕</button>
               </div>
 
-              {/* VISTA 1: LISTA FORNITORI CON PULSANTE "VEDI SCHEDA" */}
-              {!selectedPartnerDetail && (
-                <div className="space-y-3">
-                  {filteredPartners.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic py-6 text-center">
-                      Nessun partner accreditato presente per la categoria {selectedCategoryFilter} su {property.city}.
-                    </p>
-                  ) : (
-                    filteredPartners.map((p) => (
-                      <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center gap-4">
-                        <div>
-                          {p.is_myco_recommended && (
-                            <span className="inline-block bg-amber-500 text-slate-950 font-bold text-[9px] px-2 py-0.5 rounded-full uppercase mb-1">
-                              ★ {p.badge_label || 'Myco Choice'}
-                            </span>
-                          )}
-                          <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
-                          <p className="text-xs text-slate-500 line-clamp-1">{p.description}</p>
-                          <div className="flex items-center gap-1 text-xs text-amber-500 font-bold mt-1">
-                            ★ {p.rating} <span className="text-slate-400 font-normal">({p.reviews_count || 12} recensioni verificate)</span>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-1">
-                          <button
-                            onClick={() => setSelectedPartnerDetail(p)}
-                            className="bg-white border border-slate-200 text-slate-900 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-100 transition whitespace-nowrap"
-                          >
-                            Vedi Scheda & Lavori 👁️
-                          </button>
-                          <button
-                            onClick={() => handleAssignPartner(p)}
-                            disabled={assigningId === p.id}
-                            className="bg-slate-900 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-slate-800 transition whitespace-nowrap"
-                          >
-                            {assigningId === p.id ? 'In corso...' : 'Associa subito'}
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* VISTA 2: SCHEDA DI DETTAGLIO FORNITORE */}
-              {selectedPartnerDetail && (
-                <div className="space-y-6">
-                  {/* BADGE & RATING */}
-                  <div className="flex justify-between items-start bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div className="space-y-3">
+                {filteredPartners.map((p) => (
+                  <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center">
                     <div>
-                      {selectedPartnerDetail.is_myco_recommended && (
-                        <span className="bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase">
-                          ★ {selectedPartnerDetail.badge_label || 'Consigliato da Myco'}
-                        </span>
-                      )}
-                      <h3 className="text-lg font-bold text-slate-900 mt-1">{selectedPartnerDetail.company_name}</h3>
-                      <p className="text-xs text-slate-500">{selectedPartnerDetail.category} • {selectedPartnerDetail.city}</p>
+                      <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
+                      <p className="text-xs text-slate-500">{p.description}</p>
                     </div>
-                    <div className="text-right">
-                      <div className="text-base font-black text-slate-900">★ {selectedPartnerDetail.rating} / 5.0</div>
-                      <span className="text-[10px] text-emerald-600 font-semibold">100% Partner Verificato Myco</span>
-                    </div>
-                  </div>
-
-                  {/* BIO ESTESA */}
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Presentazione & Competenza</h4>
-                    <p className="text-xs text-slate-700 leading-relaxed">
-                      {selectedPartnerDetail.bio_full || selectedPartnerDetail.description}
-                    </p>
-                  </div>
-
-                  {/* PORTFOLIO FOTO / LAVORI */}
-                  {selectedPartnerDetail.portfolio_urls && selectedPartnerDetail.portfolio_urls.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Portfolio Lavori Realizzati</h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        {selectedPartnerDetail.portfolio_urls.map((url: string, i: number) => (
-                          <div key={i} className="aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
-                            <img src={url} alt="Portfolio Work" className="w-full h-full object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* TASTO AZIONE INGAGGI */}
-                  <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
-                    <button
-                      onClick={() => setSelectedPartnerDetail(null)}
-                      className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition"
-                    >
-                      Torna Indietro
-                    </button>
-                    <button
-                      onClick={() => handleAssignPartner(selectedPartnerDetail)}
-                      disabled={assigningId === selectedPartnerDetail.id}
-                      className="bg-slate-900 text-white text-xs font-bold px-6 py-2.5 rounded-xl hover:bg-slate-800 transition"
-                    >
-                      {assigningId === selectedPartnerDetail.id ? 'In corso...' : 'Associa & Invita all\'Asset'}
+                    <button onClick={() => handleAssignPartner(p)} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl">
+                      Associa
                     </button>
                   </div>
-                </div>
-              )}
-
+                ))}
+              </div>
             </div>
           </div>
         )}

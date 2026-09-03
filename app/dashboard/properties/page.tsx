@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { formatCurrency, formatPhase } from '@/lib/formatters';
+import { formatCurrency } from '@/lib/formatters';
 
 export default function PropertiesDashboardPage() {
   const supabase = createClient();
@@ -19,91 +19,96 @@ export default function PropertiesDashboardPage() {
     fetchProperties();
   }, [supabase]);
 
-  // Calcolo KPI Aggregati Portafoglio
-  const totalAssets = properties.length;
-  const totalCapitalDeployed = properties.reduce((acc, p) => acc + (Number(p.purchase_price) || 0), 0);
-  const totalTargetRent = properties.reduce((acc, p) => acc + (Number(p.monthly_rent_target) || 0), 0);
+  // CALCOLO METRICHE GLOBALI DEL PORTAFOGLIO MULTI-ASSET
+  const totalInvested = properties.reduce((acc, p) => acc + Number(p.price || 0), 0);
+  const totalGrossRent = properties.reduce((acc, p) => acc + (Number(p.monthly_rent || 0) * 12), 0);
+  const totalNetRent = properties.reduce((acc, p) => {
+    const gross = Number(p.monthly_rent || 0) * 12;
+    const fees = Number(p.management_fees || (gross * 0.15));
+    return acc + (gross - fees);
+  }, 0);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 p-8 flex justify-center items-center font-sans text-slate-400 text-sm tracking-wider uppercase">
-        Caricamento Portafoglio Asset...
-      </div>
-    );
-  }
+  const weightedAverageRoi = totalInvested > 0 && totalNetRent > 0
+    ? ((totalNetRent / totalInvested) * 100).toFixed(2)
+    : '0.00';
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 font-sans p-4 sm:p-8 antialiased">
+    <main className="min-h-screen bg-slate-50 text-slate-900 py-8 px-4 sm:px-8 font-sans antialiased">
       <div className="max-w-6xl mx-auto space-y-8">
-
-        {/* HEADER DASHBOARD */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        
+        {/* HEADER */}
+        <div className="flex justify-between items-center">
           <div>
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Myco Asset Management</span>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 mt-1">Portafoglio Immobiliare</h1>
+            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Private Wealth Portfolio</span>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mt-0.5">Sintesi Patrimonio & Asset</h1>
           </div>
-          <Link
-            href="/dashboard/properties/new"
-            className="h-11 px-5 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition shadow-sm flex items-center justify-center gap-2 w-full sm:w-auto"
-          >
-            <span>+ Aggiungi Nuovo Asset</span>
+          <Link href="/admin/partners" className="text-xs font-semibold bg-white border border-slate-200 px-4 py-2 rounded-xl text-slate-700 hover:bg-slate-100 transition shadow-sm">
+            ⚙️ Pannello Admin Network
           </Link>
         </div>
 
-        {/* 1. HEADER KPI TOTALI (3 MACRO CARD) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Totale Asset</span>
-            <p className="text-3xl font-semibold text-slate-900 mt-2">{totalAssets}</p>
+        {/* 5. BANNER CUMULATIVO DEL PATRIMONIO MULTI-ASSET */}
+        <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800 space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-4 gap-2">
+            <div>
+              <span className="bg-amber-500 text-slate-950 font-black text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                Myco Executive Summary
+              </span>
+              <h2 className="text-xl font-bold mt-1 text-white">Consolidato Portafoglio Immobiliare</h2>
+            </div>
+            <div className="text-xs text-slate-400 font-mono">Immobili Attivi: <strong className="text-white">{properties.length}</strong></div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Capitale Deployato Totale</span>
-            <p className="text-3xl font-semibold text-slate-900 mt-2">{formatCurrency(totalCapitalDeployed)}</p>
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="space-y-1">
+              <span className="text-xs text-slate-400 uppercase font-medium">Capitale Totale Deployato</span>
+              <p className="text-2xl sm:text-3xl font-black text-white">{formatCurrency(totalInvested)}</p>
+              <span className="text-[10px] text-slate-400 block">Valore cumulativo d'acquisto</span>
+            </div>
 
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Target Canone Mensile</span>
-            <p className="text-3xl font-semibold text-emerald-600 mt-2">{formatCurrency(totalTargetRent)} <span className="text-xs text-slate-400 font-normal">/mo</span></p>
+            <div className="space-y-1">
+              <span className="text-xs text-emerald-400 uppercase font-medium">Netto Bonificato Annuale</span>
+              <p className="text-2xl sm:text-3xl font-black text-emerald-400">{formatCurrency(totalNetRent)}</p>
+              <span className="text-[10px] text-slate-400 block">Rendita netta su tutti gli asset</span>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs text-amber-400 uppercase font-medium">ROI Medio Ponderato</span>
+              <p className="text-2xl sm:text-3xl font-black text-amber-400">{weightedAverageRoi}%</p>
+              <span className="text-[10px] text-slate-400 block">Rendimento globale portafoglio</span>
+            </div>
           </div>
         </div>
 
-        {/* 2. GRID CARD IMMOBILI */}
+        {/* ELENCO IMMOBILI */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500">I Miei Immobili</h2>
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">I Tuoi Asset Immobiliari</h3>
 
-          {properties.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
-              <p className="text-slate-500 text-sm">Nessun immobile gestito al momento.</p>
-            </div>
+          {loading ? (
+            <p className="text-xs text-slate-400 italic">Caricamento patrimonio...</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {properties.map((prop) => (
-                <Link
-                  key={prop.id}
-                  href={`/dashboard/properties/${prop.id}`}
-                  className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-slate-300 transition flex flex-col justify-between space-y-6 cursor-pointer group"
-                >
-                  {/* Header Card */}
-                  <div className="flex justify-between items-start gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {properties.map((p) => (
+                <Link key={p.id} href={`/dashboard/properties/${p.id}`} className="group bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition space-y-4 block">
+                  <div className="flex justify-between items-start">
                     <div>
-                      <h3 className="text-lg font-bold text-slate-900 group-hover:text-slate-800">{prop.title}</h3>
-                      <p className="text-xs text-slate-500 font-light mt-0.5">{prop.address}, {prop.city}</p>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">{p.city}</span>
+                      <h4 className="text-lg font-bold text-slate-900 group-hover:text-amber-600 transition">{p.title}</h4>
+                      <p className="text-xs text-slate-500">{p.address}</p>
                     </div>
-                    <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-full whitespace-nowrap">
-                      {formatPhase(prop.current_phase)}
+                    <span className="bg-slate-100 text-slate-900 font-bold text-xs px-3 py-1 rounded-lg">
+                      {p.current_phase || 'ACQUISTO'}
                     </span>
                   </div>
 
-                  {/* Body Card */}
-                  <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                  <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100 text-xs">
                     <div>
-                      <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Valore Stimato</span>
-                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{formatCurrency(prop.current_market_value || prop.purchase_price)}</p>
+                      <span className="text-slate-400 block text-[10px] uppercase">Valore Asset</span>
+                      <p className="font-bold text-slate-900">{formatCurrency(p.price || 0)}</p>
                     </div>
                     <div>
-                      <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Target Rent</span>
-                      <p className="text-sm font-semibold text-slate-900 mt-0.5">{formatCurrency(prop.monthly_rent_target)}/mo</p>
+                      <span className="text-emerald-600 block text-[10px] uppercase">Rendita Mensile</span>
+                      <p className="font-bold text-emerald-600">{formatCurrency(p.monthly_rent || 0)}/m</p>
                     </div>
                   </div>
                 </Link>
