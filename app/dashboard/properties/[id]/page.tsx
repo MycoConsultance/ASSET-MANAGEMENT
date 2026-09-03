@@ -97,12 +97,12 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
   // Calcolo giorni fase
   const today = new Date();
-  const startDate = property.phase_start_date ? new Date(property.phase_start_date) : new Date(today.getTime() - 45 * 24 * 60 * 60 * 1000);
-  const endDate = property.phase_estimated_end_date ? new Date(property.phase_estimated_end_date) : new Date(today.getTime() + 12 * 24 * 60 * 60 * 1000);
+  const startDate = property.phase_start_date ? new Date(property.phase_start_date) : new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const endDate = property.phase_estimated_end_date ? new Date(property.phase_estimated_end_date) : new Date(today.getTime() + 15 * 24 * 60 * 60 * 1000);
 
   const daysPassed = Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 3600 * 24)));
   const daysRemaining = Math.max(0, Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 3600 * 24)));
-  const progressPercent = property.phase_progress_percent || 75;
+  const progressPercent = property.phase_progress_percent || 65;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 py-6 sm:py-10 px-4 sm:px-8 font-sans antialiased">
@@ -135,7 +135,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* 2. LIFECYCLE STEPPER ESTESO */}
+        {/* STEPPER CICLO DI VITA */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
           <div className="w-full overflow-x-auto">
             <div className="flex items-center justify-between min-w-[700px] relative">
@@ -175,7 +175,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
 
-            {/* PROGRESS BAR & COUNTDOWN */}
             <div className="space-y-2">
               <div className="flex justify-between items-center text-xs font-bold">
                 <span className="text-slate-700">Avanzamento Lavori: {progressPercent}%</span>
@@ -208,16 +207,84 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* SEZIONI FORNITORI CONTESTUALI */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Avanzamento Cantiere & SAL</h2>
-            <p className="text-xs text-slate-500">Seleziona un'impresa qualificata per il restyling</p>
+        {/* SEZIONI CONTESTUALI DINAMICHE IN BASE ALLA FASE ATTIVA */}
+
+        {/* FASE 1: ACQUISTO & DEAL */}
+        {currentPhaseId === 'ACQUISTO_DEAL' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Atti, Preliminare & Rogito Notarile</h2>
+              <p className="text-xs text-slate-500">Seleziona uno studio notarile convenzionato per la stipula dell'atto</p>
+            </div>
+            <button onClick={() => openContextualPartnerModal('NOTAIO')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:bg-slate-800 transition">
+              📜 Seleziona Notaio Partner
+            </button>
           </div>
-          <button onClick={() => openContextualPartnerModal('IMPRESA_EDILE')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl">
-            🛠️ Seleziona Impresa Edile
-          </button>
-        </div>
+        )}
+
+        {/* FASE 2: POST ROGITO */}
+        {currentPhaseId === 'POST_ROGITO' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Pratiche Edilizie & Volture Utenze</h2>
+              <p className="text-xs text-slate-500">Ingaggia un tecnico qualificato per CILA/SCIA e trasferimenti</p>
+            </div>
+            <button onClick={() => openContextualPartnerModal('COMMERCIALISTA')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:bg-slate-800 transition">
+              🏛️ Ingaggia Tecnico / Geometra
+            </button>
+          </div>
+        )}
+
+        {/* FASE 3: VALORIZZAZIONE & CANTIERE */}
+        {currentPhaseId === 'VALORIZZAZIONE_CANTIERE' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Avanzamento Cantiere & SAL</h2>
+                <p className="text-xs text-slate-500">Seleziona un'impresa qualificata per il restyling dell'immobile</p>
+              </div>
+              <button onClick={() => openContextualPartnerModal('IMPRESA_EDILE')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:bg-slate-800 transition">
+                🛠️ Seleziona Impresa Edile
+              </button>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Servizio Fotografico & Home Staging</h2>
+                <p className="text-xs text-slate-500">Valorizzazione visiva per il lancio sul mercato affitti</p>
+              </div>
+              <button onClick={() => openContextualPartnerModal('FOTOGRAFO')} className="bg-amber-500 text-slate-950 font-bold text-xs px-4 py-2 rounded-xl hover:bg-amber-400 transition">
+                📷 Ingaggia Fotografo / Home Stager
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* FASE 4: MESSA A REDDITO */}
+        {currentPhaseId === 'MESSA_A_REDDITO' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Gestione Locazione & Tenant Selection</h2>
+              <p className="text-xs text-slate-500">Affida l'immobile a un Property Manager per la gestione completa dell'inquilino</p>
+            </div>
+            <button onClick={() => openContextualPartnerModal('PROPERTY_MANAGER')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:bg-slate-800 transition">
+              🔑 Seleziona Property Manager
+            </button>
+          </div>
+        )}
+
+        {/* FASE 5 & 6: CARE, MANUTENZIONE & REVIEW */}
+        {(currentPhaseId === 'CARE_MANUTENZIONE' || currentPhaseId === 'REVIEW_EXIT') && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Fascicolo Fiscale & Dichiarazione Redditi</h2>
+              <p className="text-xs text-slate-500">Gestione tributaria e ottimizzazione fiscale della rendita</p>
+            </div>
+            <button onClick={() => openContextualPartnerModal('COMMERCIALISTA')} className="bg-slate-900 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:bg-slate-800 transition">
+              💼 Seleziona Commercialista Partner
+            </button>
+          </div>
+        )}
 
         {/* MODALE PARTNER */}
         {isPartnerModalOpen && (
@@ -229,17 +296,21 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
               </div>
 
               <div className="space-y-3">
-                {filteredPartners.map((p) => (
-                  <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
-                      <p className="text-xs text-slate-500">{p.description}</p>
+                {filteredPartners.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-4 text-center">Nessun fornitore accreditato presente per la categoria {selectedCategoryFilter} a {property.city}.</p>
+                ) : (
+                  filteredPartners.map((p) => (
+                    <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
+                        <p className="text-xs text-slate-500">{p.description}</p>
+                      </div>
+                      <button onClick={() => handleAssignPartner(p)} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition">
+                        Associa
+                      </button>
                     </div>
-                    <button onClick={() => handleAssignPartner(p)} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl">
-                      Associa
-                    </button>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
