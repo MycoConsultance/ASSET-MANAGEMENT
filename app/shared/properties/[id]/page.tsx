@@ -13,14 +13,13 @@ export default function SharedPropertyPage({ params }: { params: Promise<{ id: s
 
   const [property, setProperty] = useState<any>(null);
   const [partnerAssoc, setPartnerAssoc] = useState<any>(null);
-  const [documents, setDocuments] = useState<any[]>([]);
+  const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // State Inserimento Dati per Property Manager
-  const [grossIncome, setGrossIncome] = useState('');
-  const [operatingExpenses, setOperatingExpenses] = useState('');
-  const [savingIncome, setSavingIncome] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
+  // Profile Update State
+  const [editBio, setEditBio] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState('');
 
   useEffect(() => {
     async function init() {
@@ -29,7 +28,6 @@ export default function SharedPropertyPage({ params }: { params: Promise<{ id: s
         return;
       }
 
-      // 1. Verifica il token di accesso nella tabella property_partners
       const { data: assoc } = await supabase
         .from('property_partners')
         .select('*, partner:partner_id(*)')
@@ -39,158 +37,118 @@ export default function SharedPropertyPage({ params }: { params: Promise<{ id: s
 
       if (assoc) {
         setPartnerAssoc(assoc);
+        if (assoc.partner) setEditBio(assoc.partner.bio_full || assoc.partner.description || '');
 
-        // 2. Carica l'immobile
         const { data: prop } = await supabase.from('properties').select('*').eq('id', resolvedParams.id).single();
-        if (prop) {
-          setProperty(prop);
-          setGrossIncome(prop.monthly_rent ? String(prop.monthly_rent) : '');
-          setOperatingExpenses(prop.management_fees ? String(prop.management_fees) : '');
-        }
+        if (prop) setProperty(prop);
 
-        // 3. Carica i documenti
-        const { data: docs } = await supabase.from('property_documents').select('*').eq('property_id', resolvedParams.id);
-        if (docs) setDocuments(docs);
+        const { data: qData } = await supabase.from('property_quotes').select('*').eq('property_id', resolvedParams.id);
+        if (qData) setQuotes(qData);
       }
       setLoading(false);
     }
     init();
   }, [resolvedParams.id, token, supabase]);
 
-  const handleUpdateIncome = async (e: React.FormEvent) => {
+  const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!property) return;
-    setSavingIncome(true);
-    setSuccessMsg('');
+    if (!partnerAssoc?.partner_id) return;
+    setSavingProfile(true);
+    setProfileMsg('');
 
-    const rentMonthly = parseFloat(grossIncome) || 0;
-    const feesMonthly = parseFloat(operatingExpenses) || 0;
+    // Invio modifiche in stato di revisione per lo Staff Myco
+    await supabase.from('partners').update({
+      pending_bio: editBio,
+      is_approved: false
+    }).eq('id', partnerAssoc.partner_id);
 
-    const { error } = await supabase
-      .from('properties')
-      .update({
-        monthly_rent: rentMonthly,
-        management_fees: feesMonthly,
-      })
-      .eq('id', property.id);
-
-    if (!error) {
-      setSuccessMsg('Consuntivo mensile aggiornato con successo! I KPI dell\'investitore sono stati ricalcolati.');
-      setProperty({ ...property, monthly_rent: rentMonthly, management_fees: feesMonthly });
-    }
-    setSavingIncome(false);
+    setProfileMsg('Modifiche inviate allo Staff Myco per il Controllo Qualità prima della pubblicazione.');
+    setSavingProfile(false);
   };
 
-  if (loading) return <div className="min-h-screen bg-slate-50 p-8 flex justify-center items-center text-xs text-slate-400 font-sans tracking-widest uppercase">Verifica Magic Link in corso...</div>;
-  if (!partnerAssoc || !property) return <div className="min-h-screen bg-slate-50 p-8 text-xs text-red-500 font-sans">Accesso non autorizzato o Token scaduto.</div>;
-
-  const partnerRole = partnerAssoc.partner_role || 'PARTNER';
+  if (loading) return <div className="min-h-screen bg-slate-50 p-8 flex justify-center items-center text-xs text-slate-400 font-sans tracking-widest uppercase">Verifica Magic Link...</div>;
+  if (!partnerAssoc || !property) return <div className="min-h-screen bg-slate-50 p-8 text-xs text-red-500 font-sans">Accesso non autorizzato.</div>;
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 py-8 px-4 sm:px-8 font-sans antialiased">
       <div className="max-w-4xl mx-auto space-y-6">
 
-        {/* HEADER AREA RISERVATA */}
-        <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        {/* HEADER AREA RISERVATA FORNITORE */}
+        <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-md flex justify-between items-center">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase">
-                Vista Riservata Partner
-              </span>
-              <span className="text-xs text-slate-400">Ruolo: {partnerRole}</span>
-            </div>
+            <span className="bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase">
+              Area Riservata Partner
+            </span>
             <h1 className="text-2xl font-bold mt-1">{property.title}</h1>
             <p className="text-xs text-slate-400">{property.address}, {property.city}</p>
           </div>
           <div className="text-right">
             <span className="text-[10px] text-slate-400 uppercase">Fornitore Incaricato</span>
-            <p className="text-sm font-bold">{partnerAssoc.partner?.company_name || partnerAssoc.partner_email}</p>
+            <p className="text-sm font-bold">{partnerAssoc.partner?.company_name}</p>
           </div>
         </div>
 
-        {/* 1. SEZIONE DEDICATA AL COMMERCIALISTA */}
-        {partnerRole === 'COMMERCIALISTA' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-            <div className="border-b border-slate-100 pb-4">
-              <h2 className="text-base font-bold text-slate-900">Area Fiscale & Rendicontazione</h2>
-              <p className="text-xs text-slate-500">Accesso riservato per adempimenti fiscali, mod. F24 e contratti di locazione</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-[10px] font-bold uppercase text-slate-400">Canone Annuo Lordo Maturato</span>
-                <p className="text-xl font-bold text-slate-900 mt-1">{formatCurrency((property.monthly_rent || 0) * 12)}</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-[10px] font-bold uppercase text-slate-400">Rif. Catastali & Regime</span>
-                <p className="text-xs font-semibold text-slate-900 mt-1">Foglio: 12 • Part: 450 • Sub: 12 (Cedolare Secca 21%)</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-900 uppercase">Documentazione Fiscale & Atti dell'Asset</h3>
-              {documents.filter(d => d.category === 'FISCALE' || d.category === 'LEGALE').map(doc => (
-                <div key={doc.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center text-xs">
-                  <span className="font-semibold text-slate-900">📄 {doc.file_name}</span>
-                  <a href={doc.file_url} target="_blank" className="bg-white border border-slate-200 px-3 py-1 rounded-lg font-medium">Scarica</a>
-                </div>
-              ))}
-            </div>
+        {/* 2. PREVENTIVI BLOCCATI & LOCK-IN PREZZI */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h2 className="text-base font-bold text-slate-900">Stato Preventivi Incarico</h2>
+            <p className="text-xs text-slate-500">I preventivi approvati dall'investitore sono bloccati in sola lettura</p>
           </div>
-        )}
 
-        {/* 2. SEZIONE DEDICATA AL PROPERTY MANAGER */}
-        {partnerRole === 'PROPERTY_MANAGER' && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
-            <div className="border-b border-slate-100 pb-4">
-              <h2 className="text-base font-bold text-slate-900">Aggiornamento Consuntivo Mensile Rendita</h2>
-              <p className="text-xs text-slate-500">Inserisci i dati effettivi di incasso e spese per il ricalcolo automatico del ROI dell'investitore</p>
-            </div>
-
-            {successMsg && (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl font-medium">
-                ✓ {successMsg}
-              </div>
-            )}
-
-            <form onSubmit={handleUpdateIncome} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-3">
+            {quotes.map((q) => (
+              <div key={q.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center text-xs">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Canone Incassato Mensile (€)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={grossIncome}
-                    onChange={(e) => setGrossIncome(e.target.value)}
-                    placeholder="1500.00"
-                    className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold"
-                  />
+                  <h4 className="font-bold text-slate-900">{q.title}</h4>
+                  <span className="text-[10px] text-slate-400">Importo: {formatCurrency(q.amount)}</span>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 uppercase">Spese Operative & Fees Mensili (€)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={operatingExpenses}
-                    onChange={(e) => setOperatingExpenses(e.target.value)}
-                    placeholder="225.00"
-                    className="w-full h-10 px-3 border border-slate-200 rounded-xl text-xs font-bold text-red-600"
-                  />
+                  {q.status === 'APPROVED_LOCKED' ? (
+                    <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-3 py-1 rounded-full border border-emerald-200">
+                      🔒 PREVENTIVO BLOCCATO & APPROVATO
+                    </span>
+                  ) : (
+                    <span className="bg-amber-100 text-amber-800 font-bold text-[10px] px-3 py-1 rounded-full">
+                      In Attesa Approvazione
+                    </span>
+                  )}
                 </div>
               </div>
-
-              <button
-                type="submit"
-                disabled={savingIncome}
-                className="bg-slate-900 text-white text-xs font-bold px-6 py-2.5 rounded-xl hover:bg-slate-800 transition"
-              >
-                {savingIncome ? 'Aggiornamento...' : 'Salva Consuntivo Mensile'}
-              </button>
-            </form>
+            ))}
           </div>
-        )}
+        </div>
+
+        {/* 4. COMPILAZIONE SCHEDA CON CONTROL QUALITY STAFF */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-3">
+            <h2 className="text-base font-bold text-slate-900">Aggiorna Profilo & Presentazione Studio</h2>
+            <p className="text-xs text-slate-500">Le modifiche saranno verificate dallo Staff Myco prima di comparire all'investitore</p>
+          </div>
+
+          {profileMsg && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl font-medium">
+              ✓ {profileMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleUpdateProfile} className="space-y-3">
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Presentazione & Servizi</label>
+              <textarea
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
+                className="w-full p-3 border border-slate-200 rounded-xl text-xs h-28"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={savingProfile}
+              className="bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl hover:bg-slate-800 transition"
+            >
+              {savingProfile ? 'Invio in corso...' : 'Invia Modifica per Controllo Qualità'}
+            </button>
+          </form>
+        </div>
 
       </div>
     </main>
