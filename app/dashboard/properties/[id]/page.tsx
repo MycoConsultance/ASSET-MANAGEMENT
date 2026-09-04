@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { formatCurrency, LIFECYCLE_STAGES } from '@/lib/formatters';
 
-// 1. MAPPATURA TIPI PROVIDER PER FASE (STEP_PROVIDER_MAP)
 export const STEP_PROVIDER_MAP: Record<number, {
   title: string;
   description: string;
@@ -78,6 +77,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [viewingPartner, setViewingPartner] = useState<any | null>(null); // Scheda dettaglio partner
 
   const fetchPropertyData = async (propId: string) => {
     const { data: prop } = await supabase.from('properties').select('*').eq('id', propId).single();
@@ -90,7 +90,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     const { data: items } = await supabase.from('property_budget_items').select('*').eq('property_id', propId).order('created_at', { ascending: true });
     if (items) setBudgetItems(items);
 
-    // 2. RECUPERO PARTNER ASSEGNATI (PERSISTENZA)
     const { data: assigned } = await supabase
       .from('property_partners')
       .select('*, partner:partner_id(*)')
@@ -108,6 +107,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
   const openContextualPartnerModal = (role: string) => {
     setSelectedRoleFilter(role);
+    setViewingPartner(null);
     setIsPartnerModalOpen(true);
   };
 
@@ -125,6 +125,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
     if (!error) {
       setIsPartnerModalOpen(false);
+      setViewingPartner(null);
       await fetchPropertyData(property.id);
     }
     setAssigningId(null);
@@ -222,7 +223,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* 3. UX MODULI FORNITORI A CASCATA (FASE ATTIVA IN RILIEVO, SUCCESSIVE OPACIZZATE) */}
+        {/* CASCATA MODULI FORNITORI */}
         <div className="space-y-6">
           <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Piano Operativo Fornitori & Governance</h2>
 
@@ -256,7 +257,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 </div>
 
-                {/* GRIGLIA AZIONI & PERSISTENZA PARTNER ASSEGNATI */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
                   {stepData.actions.map((act, i) => {
                     const assigned = assignedPartners.find(ap => ap.partner_role === act.role || ap.partner?.category === act.role);
@@ -266,7 +266,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                         <span className="text-[10px] font-bold text-slate-400 uppercase">{act.role}</span>
                         
                         {assigned ? (
-                          /* CARD PARTNER GIA ASSEGNATO (PERSISTENZA) */
                           <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg space-y-1">
                             <span className="bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-md uppercase block w-fit">
                               Partner Attivo
@@ -274,7 +273,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                             <p className="text-xs font-bold text-slate-900">{assigned.partner?.company_name || assigned.partner_email}</p>
                           </div>
                         ) : (
-                          /* BOTTONE INGAGGI */
                           <button
                             onClick={() => openContextualPartnerModal(act.role)}
                             disabled={!isActiveStep && !isPastStep}
@@ -296,36 +294,101 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           })}
         </div>
 
-        {/* MODALE SELEZIONE PARTNER */}
+        {/* MODALE SELEZIONE PARTNER CON SCHEDA ANAGRAFICA */}
         {isPartnerModalOpen && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl space-y-6 max-h-[90vh] overflow-y-auto border border-slate-200">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <h3 className="text-base font-bold text-slate-900">Seleziona {selectedRoleFilter} su {property.city}</h3>
-                <button type="button" onClick={() => setIsPartnerModalOpen(false)} className="text-slate-400 font-bold">✕</button>
-              </div>
-
-              <div className="space-y-3">
-                {filteredPartners.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-4 text-center">Nessun partner accreditato presente per il ruolo {selectedRoleFilter} a {property.city}.</p>
-                ) : (
-                  filteredPartners.map((p) => (
-                    <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex justify-between items-center">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
-                        <p className="text-xs text-slate-500">{p.description}</p>
-                      </div>
-                      <button
-                        onClick={() => handleAssignPartner(p)}
-                        disabled={assigningId === p.id}
-                        className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition"
-                      >
-                        {assigningId === p.id ? 'In corso...' : 'Associa & Invita'}
+              
+              {/* VISTA 1: DETTAGLIO ANAGRAFICA COMPLETA */}
+              {viewingPartner ? (
+                <div className="space-y-5">
+                  <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+                    <div>
+                      <button onClick={() => setViewingPartner(null)} className="text-xs font-bold text-amber-600 hover:underline mb-1 block">
+                        ← Torna all'elenco fornitori
                       </button>
+                      <h3 className="text-lg font-bold text-slate-900">{viewingPartner.company_name}</h3>
+                      <p className="text-xs text-slate-500">{viewingPartner.category} • {viewingPartner.city}</p>
                     </div>
-                  ))
-                )}
-              </div>
+                    <span className="bg-amber-100 text-amber-900 font-bold text-xs px-3 py-1 rounded-lg">
+                      ★ {viewingPartner.rating || '5.0'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 text-xs text-slate-700">
+                    <h4 className="font-bold uppercase text-[10px] text-slate-400">Presentazione & Profilo Studio</h4>
+                    <p className="bg-slate-50 p-4 rounded-xl border border-slate-200 leading-relaxed">
+                      {viewingPartner.bio_full || viewingPartner.description || 'Nessuna presentazione dettagliata inserita.'}
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                    <button
+                      onClick={() => setViewingPartner(null)}
+                      className="text-xs font-bold bg-white border border-slate-200 px-4 py-2.5 rounded-xl hover:bg-slate-50"
+                    >
+                      Indietro
+                    </button>
+                    <button
+                      onClick={() => handleAssignPartner(viewingPartner)}
+                      disabled={assigningId === viewingPartner.id}
+                      className="text-xs font-bold bg-slate-900 text-white px-5 py-2.5 rounded-xl hover:bg-slate-800 transition"
+                    >
+                      {assigningId === viewingPartner.id ? 'In corso...' : 'Associa & Invita Immediatamente'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* VISTA 2: LISTA MULTI-FORNITORE */
+                <>
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Seleziona {selectedRoleFilter} su {property.city}</h3>
+                      <p className="text-xs text-slate-400">Fornitori accreditati nel Curated Network Myco</p>
+                    </div>
+                    <button type="button" onClick={() => setIsPartnerModalOpen(false)} className="text-slate-400 font-bold">✕</button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {filteredPartners.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-4 text-center">Nessun partner accreditato presente per il ruolo {selectedRoleFilter} a {property.city}.</p>
+                    ) : (
+                      filteredPartners.map((p) => (
+                        <div key={p.id} className="bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-900">{p.company_name}</h4>
+                              {p.is_myco_recommended && (
+                                <span className="bg-amber-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full uppercase">
+                                  Myco Choice
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500 line-clamp-1">{p.description}</p>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                            <button
+                              onClick={() => setViewingPartner(p)}
+                              className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl hover:bg-slate-100 transition"
+                            >
+                              👁️ Scheda Studio
+                            </button>
+                            <button
+                              onClick={() => handleAssignPartner(p)}
+                              disabled={assigningId === p.id}
+                              className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition"
+                            >
+                              {assigningId === p.id ? 'In corso...' : 'Associa & Invita'}
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
         )}
