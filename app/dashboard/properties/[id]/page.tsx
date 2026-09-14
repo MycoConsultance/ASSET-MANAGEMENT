@@ -138,17 +138,25 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const currentStageObj = LIFECYCLE_STAGES.find(s => s.id === currentPhaseId) || LIFECYCLE_STAGES[0];
   const activeStep = currentStageObj.step || 1;
 
+  const acquisitionCost = Number(property.price || 150000);
+  const restylingCost = budgetItems.reduce((acc, item) => acc + Number(item.budgeted_amount || 0), 0);
+  
+  const notaryFees = Number(property.notary_fees || 0);
+  const agencyFees = Number(property.agency_fees || 0);
+  const transferTaxes = Number(property.transfer_taxes || 0);
+  const mortgageSetupCosts = Number(property.mortgage_setup_costs || 0);
+  const initialReserveFund = Number(property.initial_reserve_fund || 0);
+
+  const totalAncillaryCosts = notaryFees + agencyFees + transferTaxes + mortgageSetupCosts + initialReserveFund;
+  const realTotalDeployed = acquisitionCost + restylingCost + totalAncillaryCosts;
+
   const monthlyRent = Number(property.monthly_rent || 0);
   const grossRentAnnual = monthlyRent * 12;
   const managementExpensesAnnual = Number(property.management_fees || (grossRentAnnual * 0.15));
   const netRentAnnual = grossRentAnnual - managementExpensesAnnual;
 
-  const acquisitionCost = Number(property.price || 150000);
-  const restylingCost = budgetItems.reduce((acc, item) => acc + Number(item.budgeted_amount || 0), 0);
-  const totalCapitalInvested = acquisitionCost + restylingCost;
-
-  const realRoiNetPercent = totalCapitalInvested > 0 && netRentAnnual > 0 
-    ? ((netRentAnnual / totalCapitalInvested) * 100).toFixed(2)
+  const realRoiNetPercent = realTotalDeployed > 0 && netRentAnnual > 0 
+    ? ((netRentAnnual / realTotalDeployed) * 100).toFixed(2)
     : '0.00';
 
   const filteredPartners = selectedRoleFilter 
@@ -203,11 +211,12 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        {/* METRICHE FINANZIARIE */}
+        {/* METRICHE FINANZIARIE REALI */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Capitale Investito</span>
-            <p className="text-xl font-semibold text-slate-900 mt-1">{formatCurrency(totalCapitalInvested)}</p>
+            <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Capitale Reale Deployato</span>
+            <p className="text-xl font-black text-slate-900 mt-1">{formatCurrency(realTotalDeployed)}</p>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Incl. acquisto, opere e accessori</span>
           </div>
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Canone Incassato</span>
@@ -220,6 +229,45 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-md">
             <span className="text-xs font-medium text-amber-400 uppercase tracking-wider">ROI Netto Reale %</span>
             <p className="text-2xl font-black text-white mt-1">{realRoiNetPercent}%</p>
+          </div>
+        </div>
+
+        {/* WIDGET SCUDO FINANZIARIO */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <span className="bg-amber-500 text-slate-950 font-black text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                Myco Financial Shield
+              </span>
+              <h2 className="text-base font-bold text-slate-900 mt-1">Breakdown Spese Accessorie & Avvio Asset</h2>
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-slate-400 block font-medium">Totale Accessori Incisi</span>
+              <p className="text-sm font-extrabold text-slate-900">{formatCurrency(totalAncillaryCosts)}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Spettanze Notarili</span>
+              <p className="font-bold text-slate-900">{formatCurrency(notaryFees)}</p>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Provvigione Agenzia</span>
+              <p className="font-bold text-slate-900">{formatCurrency(agencyFees)}</p>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Imposte & Tasse</span>
+              <p className="font-bold text-slate-900">{formatCurrency(transferTaxes)}</p>
+            </div>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase block">Istruttoria Mutuo</span>
+              <p className="font-bold text-slate-900">{formatCurrency(mortgageSetupCosts)}</p>
+            </div>
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 col-span-2 sm:col-span-1">
+              <span className="text-[10px] font-bold text-emerald-700 uppercase block">Fondo Cassa Iniziale</span>
+              <p className="font-bold text-emerald-800">{formatCurrency(initialReserveFund)}</p>
+            </div>
           </div>
         </div>
 
@@ -294,16 +342,12 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           })}
         </div>
 
-        {/* MODALE SELEZIONE PARTNER CON SCHEDA STUDIO RICH EXECUTIVE */}
+        {/* MODALE SELEZIONE PARTNER CON SCHEDA STUDIO */}
         {isPartnerModalOpen && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto border border-slate-200">
-              
-              {/* VISTA 1: DETTAGLIO SCHEDA STUDIO CURATA & RICCA */}
               {viewingPartner ? (
                 <div className="space-y-6">
-                  
-                  {/* TOP HEADER STUDIO CON LOGO E BADGE */}
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
@@ -336,7 +380,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                     </div>
                   </div>
 
-                  {/* GRID SPECIFICHE ESPERIENZA & TEMPISTICHE */}
                   <div className="grid grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-center text-xs">
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase block">Esperienza</span>
@@ -352,7 +395,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                     </div>
                   </div>
 
-                  {/* PRESENTAZIONE ESTESA */}
                   <div className="space-y-2 text-xs">
                     <h4 className="font-bold uppercase text-[10px] text-slate-400 tracking-wider">Presentazione Studio</h4>
                     <p className="bg-white p-4 rounded-2xl border border-slate-200 text-slate-700 leading-relaxed font-normal">
@@ -360,33 +402,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                     </p>
                   </div>
 
-                  {/* LISTA SERVIZI GARANTITI */}
-                  <div className="space-y-2 text-xs">
-                    <h4 className="font-bold uppercase text-[10px] text-slate-400 tracking-wider">Servizi & Competenza</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {(viewingPartner.services_list || ['Due Diligence Aste', 'Perizie CTP', 'Analisi Urbanistica']).map((srv: string, idx: number) => (
-                        <span key={idx} className="bg-slate-100 text-slate-800 font-semibold px-3 py-1 rounded-xl text-[11px] border border-slate-200">
-                          ✓ {srv}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* PORTFOLIO FOTOGRAFICO ANTEPRIMA */}
-                  {viewingPartner.portfolio_photos && viewingPartner.portfolio_photos.length > 0 && (
-                    <div className="space-y-2 text-xs">
-                      <h4 className="font-bold uppercase text-[10px] text-slate-400 tracking-wider">Progetti & Portfolio Lavori</h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        {viewingPartner.portfolio_photos.map((imgUrl: string, idx: number) => (
-                          <div key={idx} className="aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
-                            <img src={imgUrl} alt="Portfolio Studio" className="w-full h-full object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CONTATTI DIRETTI & AZIONE */}
                   <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
                     <div className="text-xs text-slate-500 space-y-0.5">
                       <p>📍 {viewingPartner.address || 'Milano, Italia'}</p>
@@ -394,25 +409,16 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                     </div>
 
                     <div className="flex gap-2 w-full sm:w-auto">
-                      <button
-                        onClick={() => setViewingPartner(null)}
-                        className="text-xs font-bold bg-white border border-slate-200 px-4 py-2.5 rounded-xl hover:bg-slate-50 flex-1 sm:flex-initial"
-                      >
+                      <button onClick={() => setViewingPartner(null)} className="text-xs font-bold bg-white border border-slate-200 px-4 py-2.5 rounded-xl hover:bg-slate-50 flex-1 sm:flex-initial">
                         Indietro
                       </button>
-                      <button
-                        onClick={() => handleAssignPartner(viewingPartner)}
-                        disabled={assigningId === viewingPartner.id}
-                        className="text-xs font-bold bg-slate-900 text-white px-5 py-2.5 rounded-xl hover:bg-slate-800 transition flex-1 sm:flex-initial"
-                      >
+                      <button onClick={() => handleAssignPartner(viewingPartner)} disabled={assigningId === viewingPartner.id} className="text-xs font-bold bg-slate-900 text-white px-5 py-2.5 rounded-xl hover:bg-slate-800 transition flex-1 sm:flex-initial">
                         {assigningId === viewingPartner.id ? 'In corso...' : 'Associa & Invita Immediatamente'}
                       </button>
                     </div>
                   </div>
-
                 </div>
               ) : (
-                /* VISTA 2: LISTA MULTI-FORNITORE */
                 <>
                   <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                     <div>
@@ -446,17 +452,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-0 border-slate-200">
-                            <button
-                              onClick={() => setViewingPartner(p)}
-                              className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl hover:bg-slate-100 transition"
-                            >
+                            <button onClick={() => setViewingPartner(p)} className="bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl hover:bg-slate-100 transition">
                               👁️ Scheda Studio
                             </button>
-                            <button
-                              onClick={() => handleAssignPartner(p)}
-                              disabled={assigningId === p.id}
-                              className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition"
-                            >
+                            <button onClick={() => handleAssignPartner(p)} disabled={assigningId === p.id} className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-800 transition">
                               {assigningId === p.id ? 'In corso...' : 'Associa & Invita'}
                             </button>
                           </div>
@@ -466,7 +465,6 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                   </div>
                 </>
               )}
-
             </div>
           </div>
         )}
