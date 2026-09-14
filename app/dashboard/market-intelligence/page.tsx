@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import DashboardNavbar from '@/components/DashboardNavbar';
 
 export default function MarketIntelligencePage() {
   const supabase = createClient();
@@ -15,7 +16,6 @@ export default function MarketIntelligencePage() {
   const [loading, setLoading] = useState(false);
   const [analyzedData, setAnalyzedData] = useState<any>(null);
 
-  // Carica le micro-zone OMI disponibili dal Database Supabase per la città selezionata
   useEffect(() => {
     async function loadZones() {
       const { data } = await supabase
@@ -35,7 +35,6 @@ export default function MarketIntelligencePage() {
     loadZones();
   }, [city, supabase]);
 
-  // Esegue l'analisi prendendo i dati OMI reali da Supabase
   const handleRunAnalysis = async () => {
     if (!zone) return;
     setLoading(true);
@@ -68,7 +67,6 @@ export default function MarketIntelligencePage() {
         verdict
       });
     } else {
-      // Fallback algoritmico se la combinazione specifica non è presente
       setAnalyzedData({
         city,
         zone,
@@ -92,20 +90,19 @@ export default function MarketIntelligencePage() {
   }, [zone, operationType]);
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 py-8 px-4 sm:px-8 font-sans antialiased">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
+      <DashboardNavbar />
+
+      <main className="py-8 px-4 sm:px-8 max-w-5xl mx-auto space-y-8">
         
-        {/* HEADER TOP BAR */}
+        {/* HEADER BAR */}
         <div className="flex justify-between items-center">
           <div>
-            <Link href="/dashboard/properties" className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 font-medium transition">
-              ← Torna alla Dashboard
-            </Link>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               Market Intelligence & Risk Analysis
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Banca Dati OMI Agenzia delle Entrate & Algoritmo IAI integrato in tempo reale
+              Valuta qualsiasi zona in Italia prima dell'acquisto (Banca Dati OMI Agenzia delle Entrate)
             </p>
           </div>
           <span className="bg-amber-500 text-slate-950 font-black text-[9px] px-3 py-1 rounded-full uppercase tracking-wider">
@@ -117,7 +114,6 @@ export default function MarketIntelligencePage() {
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             
-            {/* SELETTORE CITTÀ */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-400 uppercase">Città Target</label>
               <select
@@ -136,9 +132,8 @@ export default function MarketIntelligencePage() {
               </select>
             </div>
 
-            {/* SELETTORE MICRO-ZONA OMI */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-400 uppercase">Micro-Zona OMI (Agenzia delle Entrate)</label>
+              <label className="text-xs font-bold text-slate-400 uppercase">Micro-Zona / Quartiere OMI</label>
               <select
                 value={zone}
                 onChange={(e) => setZone(e.target.value)}
@@ -150,7 +145,6 @@ export default function MarketIntelligencePage() {
               </select>
             </div>
 
-            {/* TOGGLE VENDITA / AFFITTO */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-400 uppercase">Tipo Operazione</label>
               <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -178,14 +172,13 @@ export default function MarketIntelligencePage() {
             disabled={loading}
             className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2"
           >
-            {loading ? 'Interrogazione Database OMI in corso...' : '⚡ Aggiorna Analisi Liquidità'}
+            {loading ? 'Interrogazione Database OMI in corso...' : '⚡ Analizza Liquidità Zona'}
           </button>
         </div>
 
-        {/* RISULTATO IAI SCORE DA DB */}
+        {/* RISULTATO IAI SCORE */}
         {analyzedData && (
           <div className="space-y-6">
-            
             <div className={`rounded-3xl p-6 sm:p-8 border shadow-lg transition-all ${
               analyzedData.verdict.status === 'GREEN'
                 ? 'bg-emerald-950 text-emerald-50 border-emerald-800'
@@ -222,19 +215,16 @@ export default function MarketIntelligencePage() {
                 <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.domDays} <span className="text-xs font-normal text-slate-400">giorni</span></p>
                 <span className="text-[10px] text-slate-500 block">Permanenza media annuncio</span>
               </div>
-
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase">Sconto Medio Applicato</span>
                 <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.discountPercent}%</p>
                 <span className="text-[10px] text-slate-500 block">Scostamento asking/rogito</span>
               </div>
-
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase">Ratio Domanda/Offerta</span>
                 <p className="text-2xl font-black text-emerald-600 font-mono">{analyzedData.demandRatio} <span className="text-xs font-normal text-slate-400">/ 5.0</span></p>
                 <span className="text-[10px] text-slate-500 block">Pressione acquirenti sui portali</span>
               </div>
-
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase">Volume Scambi NTN</span>
                 <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.ntnVolume} <span className="text-xs font-normal text-slate-400">/anno</span></p>
@@ -248,11 +238,10 @@ export default function MarketIntelligencePage() {
                 L'Indice di Assorbimento Immobiliare (IAI) è generato mediante elaborazioni algoritmiche di Intelligenza Artificiale basate sui dati correnti OMI, ISTAT e aggregatori immobiliari. Il verdetto costituisce un indicatore probabilistico di supporto decisionale e non integra in alcun modo una garanzia di vendita, locazione o rendimento finanziario. MYCO S.r.l. non si assume responsabilità per decisioni d'acquisto o variazioni congiunturali del mercato locale.
               </p>
             </div>
-
           </div>
         )}
 
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

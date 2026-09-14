@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { formatCurrency, LIFECYCLE_STAGES } from '@/lib/formatters';
+import DashboardNavbar from '@/components/DashboardNavbar';
 
 export default function PropertiesDashboardPage() {
   const supabase = createClient();
@@ -30,7 +31,6 @@ export default function PropertiesDashboardPage() {
     ? ((totalNetRent / totalInvested) * 100).toFixed(2)
     : '0.00';
 
-  // Helper per calcolo giorni
   const getDaysCount = (startDateStr: string, endDateStr: string) => {
     const today = new Date();
     const start = startDateStr ? new Date(startDateStr) : new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -43,26 +43,25 @@ export default function PropertiesDashboardPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 py-8 px-4 sm:px-8 font-sans antialiased">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
+      <DashboardNavbar />
+
+      <main className="py-8 px-4 sm:px-8 max-w-6xl mx-auto space-y-8">
         
         {/* HEADER TOP BAR */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Private Wealth Portfolio</span>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mt-0.5">Sintesi Patrimonio & Asset</h1>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/dashboard/settings" className="text-xs font-semibold bg-white border border-slate-200 px-4 py-2 rounded-xl text-slate-700 hover:bg-slate-100 transition shadow-sm">
-              ⚙️ Impostazioni
-            </Link>
-            <Link href="/admin/partners" className="text-xs font-semibold bg-white border border-slate-200 px-4 py-2 rounded-xl text-slate-700 hover:bg-slate-100 transition shadow-sm">
-              Pannello Staff
+            <Link href="/dashboard/market-intelligence" className="text-xs font-bold bg-amber-500 text-slate-950 px-4 py-2.5 rounded-xl hover:bg-amber-400 transition shadow-sm flex items-center gap-1.5">
+              <span>⚡</span> Analizza Nuova Zona
             </Link>
           </div>
         </div>
 
-        {/* BANNER SCURO EXECUTIVE */}
+        {/* EXECUTIVE BANNER */}
         <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800 space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-4 gap-2">
             <div>
@@ -95,7 +94,7 @@ export default function PropertiesDashboardPage() {
           </div>
         </div>
 
-        {/* ELENCO IMMOBILI CON MINI-STEPPER & TIMELINE */}
+        {/* LISTA IMMOBILI */}
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">I Tuoi Asset Immobiliari ({properties.length})</h3>
 
@@ -110,8 +109,6 @@ export default function PropertiesDashboardPage() {
 
                 return (
                   <Link key={p.id} href={`/dashboard/properties/${p.id}`} className="group bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition space-y-5 block">
-                    
-                    {/* TOP HEADER CARD */}
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase">{p.city}</span>
@@ -119,7 +116,6 @@ export default function PropertiesDashboardPage() {
                         <p className="text-xs text-slate-500">{p.address}</p>
                       </div>
 
-                      {/* BADGE FASE + CONTATORE TEMPORALE */}
                       <div className="text-right space-y-1">
                         <span className="inline-block bg-slate-900 text-white font-bold text-xs px-3 py-1 rounded-lg">
                           {currentStageObj.label}
@@ -130,10 +126,8 @@ export default function PropertiesDashboardPage() {
                       </div>
                     </div>
 
-                    {/* 1. MINI-STEPPER A 5 PALLINI */}
                     <div className="pt-2 pb-1 border-t border-b border-slate-100">
                       <div className="flex items-center justify-between relative px-2">
-                        {/* Linea orizzontale di sfondo */}
                         <div className="absolute top-[14px] left-4 right-4 h-0.5 bg-slate-200 -z-0" />
                         
                         {LIFECYCLE_STAGES.map((stage) => {
@@ -163,7 +157,6 @@ export default function PropertiesDashboardPage() {
                       </div>
                     </div>
 
-                    {/* METRICHE FINANZIARIE CARD */}
                     <div className="grid grid-cols-2 gap-4 text-xs">
                       <div>
                         <span className="text-slate-400 block text-[10px] uppercase">Valore Asset</span>
@@ -182,7 +175,7 @@ export default function PropertiesDashboardPage() {
           )}
         </div>
 
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
