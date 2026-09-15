@@ -5,58 +5,6 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import DashboardNavbar from '@/components/DashboardNavbar';
 
-const DEFAULT_OMI_DATA: Record<string, Array<{
-  zone: string;
-  op: 'VENDITA' | 'AFFITTO';
-  dom: number;
-  discount: number;
-  ratio: number;
-  ntn: number;
-  score: number;
-  status: 'GREEN' | 'YELLOW' | 'RED';
-  label: string;
-  risk: string;
-  period: string;
-}>> = {
-  'Milano': [
-    { zone: 'Isola / Porta Nuova / Garibaldi', op: 'VENDITA', dom: 38, discount: 3.2, ratio: 4.7, ntn: 180, score: 88, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Isola / Porta Nuova / Garibaldi', op: 'AFFITTO', dom: 14, discount: 1.5, ratio: 4.9, ntn: 210, score: 95, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Centro Storico / Duomo / Brera', op: 'VENDITA', dom: 42, discount: 3.0, ratio: 4.8, ntn: 210, score: 89, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Navigli / Porta Ticinese / Darsena', op: 'VENDITA', dom: 45, discount: 4.0, ratio: 4.5, ntn: 165, score: 84, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Città Studi / Lambrate / Porta Venezia', op: 'VENDITA', dom: 40, discount: 3.5, ratio: 4.6, ntn: 195, score: 87, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'San Siro / Trenno / Figino', op: 'VENDITA', dom: 85, discount: 7.5, ratio: 2.8, ntn: 95, score: 62, status: 'YELLOW', label: 'ZONA NEUTRA', risk: 'Valutare con sconto di acquisto (60-120 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Baggio / Quarto Cagnino', op: 'VENDITA', dom: 98, discount: 8.8, ratio: 2.2, ntn: 75, score: 54, status: 'YELLOW', label: 'ZONA NEUTRA', risk: 'Valutare con sconto di acquisto (60-120 giorni)', period: '2° Semestre 2025' }
-  ],
-  'Roma': [
-    { zone: 'Prati / Clodio / Delle Vittorie', op: 'VENDITA', dom: 52, discount: 4.1, ratio: 4.0, ntn: 150, score: 81, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Centro Storico / Campo Marzio / Tridente', op: 'VENDITA', dom: 50, discount: 4.2, ratio: 4.4, ntn: 190, score: 83, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Trastevere / Gianicolo', op: 'VENDITA', dom: 48, discount: 3.8, ratio: 4.3, ntn: 135, score: 84, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'EUR / Montagnola / Serafico', op: 'VENDITA', dom: 65, discount: 5.5, ratio: 3.2, ntn: 110, score: 72, status: 'YELLOW', label: 'ZONA NEUTRA', risk: 'Valutare con sconto di acquisto (60-120 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Tor Bella Monaca / Casilino', op: 'VENDITA', dom: 145, discount: 12.8, ratio: 1.4, ntn: 40, score: 32, status: 'RED', label: 'ZONA ILLIQUIDA / SATURA', risk: 'Alto Rischio Incastro (> 120 giorni)', period: '2° Semestre 2025' }
-  ],
-  'Bologna': [
-    { zone: 'Centro Storico / Irnerio / Galvani', op: 'VENDITA', dom: 35, discount: 2.8, ratio: 4.8, ntn: 175, score: 91, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Centro Storico / Irnerio / Galvani', op: 'AFFITTO', dom: 10, discount: 1.0, ratio: 5.0, ntn: 220, score: 98, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Murri / Costa Saragozza', op: 'VENDITA', dom: 42, discount: 3.4, ratio: 4.3, ntn: 140, score: 85, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Bolognina / Navile / Arcoveggio', op: 'VENDITA', dom: 55, discount: 4.8, ratio: 3.7, ntn: 120, score: 78, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Pilastro / San Donato', op: 'VENDITA', dom: 110, discount: 9.5, ratio: 1.9, ntn: 50, score: 44, status: 'RED', label: 'ZONA ILLIQUIDA / SATURA', risk: 'Alto Rischio Incastro (> 120 giorni)', period: '2° Semestre 2025' }
-  ],
-  'Torino': [
-    { zone: 'Centro / Crocetta', op: 'VENDITA', dom: 58, discount: 4.9, ratio: 3.8, ntn: 160, score: 76, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'San Salvario / Valentino', op: 'VENDITA', dom: 50, discount: 4.2, ratio: 4.1, ntn: 145, score: 81, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Barriera di Milano / Rebaudengo', op: 'VENDITA', dom: 130, discount: 11.2, ratio: 1.6, ntn: 45, score: 38, status: 'RED', label: 'ZONA ILLIQUIDA / SATURA', risk: 'Alto Rischio Incastro (> 120 giorni)', period: '2° Semestre 2025' }
-  ],
-  'Firenze': [
-    { zone: 'Centro Storico / Duomo / Santa Croce', op: 'VENDITA', dom: 40, discount: 3.1, ratio: 4.6, ntn: 185, score: 88, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Novoli / Careggi', op: 'VENDITA', dom: 52, discount: 4.5, ratio: 3.9, ntn: 130, score: 79, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' }
-  ],
-  'Napoli': [
-    { zone: 'Chiaia / Posillipo / Vomero', op: 'VENDITA', dom: 48, discount: 3.9, ratio: 4.2, ntn: 140, score: 82, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Centro Storico / Decumani', op: 'VENDITA', dom: 55, discount: 4.6, ratio: 3.8, ntn: 125, score: 76, status: 'GREEN', label: 'ZONA AD ALTA LIQUIDITÀ', risk: 'Basso Rischio Incastro (< 60 giorni)', period: '2° Semestre 2025' },
-    { zone: 'Scampia / Secondigliano', op: 'VENDITA', dom: 155, discount: 14.0, ratio: 1.2, ntn: 30, score: 28, status: 'RED', label: 'ZONA ILLIQUIDA / SATURA', risk: 'Alto Rischio Incastro (> 120 giorni)', period: '2° Semestre 2025' }
-  ]
-};
-
 export default function MarketIntelligencePage() {
   const supabase = createClient();
   
@@ -70,31 +18,25 @@ export default function MarketIntelligencePage() {
 
   useEffect(() => {
     async function loadZones() {
-      let dbZones: string[] = [];
-      
       try {
+        // Query case-insensitive per trovare sia 'Milano' che 'MILANO' su Supabase
         const { data } = await supabase
           .from('market_zone_analytics')
           .select('zone_name')
-          .eq('city', city);
+          .ilike('city', city);
         
         if (data && data.length > 0) {
-          dbZones = Array.from(new Set(data.map(item => item.zone_name)));
+          const dbZones = Array.from(new Set(data.map(item => item.zone_name)));
+          setAvailableZones(dbZones);
+          setZone(dbZones[0]);
+          return;
         }
       } catch (err) {
-        console.log('Utilizzo fallback nativo');
+        console.log('Query Supabase fallita', err);
       }
-
-      if (dbZones.length === 0 && DEFAULT_OMI_DATA[city]) {
-        dbZones = Array.from(new Set(DEFAULT_OMI_DATA[city].map(item => item.zone)));
-      }
-
-      setAvailableZones(dbZones);
-      if (dbZones.length > 0) {
-        setZone(dbZones[0]);
-      } else {
-        setZone('');
-      }
+      
+      setAvailableZones([]);
+      setZone('');
     }
 
     loadZones();
@@ -104,13 +46,11 @@ export default function MarketIntelligencePage() {
     if (!zone) return;
     setLoading(true);
 
-    let matchData: any = null;
-
     try {
       const { data } = await supabase
         .from('market_zone_analytics')
         .select('*')
-        .eq('city', city)
+        .ilike('city', city)
         .eq('zone_name', zone)
         .eq('operation_type', operationType)
         .maybeSingle();
@@ -123,7 +63,7 @@ export default function MarketIntelligencePage() {
           verdict = { label: 'ZONA NEUTRA', status: 'YELLOW', risk: 'Valutare con sconto di acquisto (60-120 giorni)' };
         }
 
-        matchData = {
+        setAnalyzedData({
           city: data.city,
           zone: data.zone_name,
           operationType: data.operation_type,
@@ -132,50 +72,16 @@ export default function MarketIntelligencePage() {
           demandRatio: data.demand_supply_ratio,
           ntnVolume: data.ntn_annual_volume,
           score: data.iai_score,
+          valMin: data.val_m2_min,
+          valMax: data.val_m2_max,
           dataPeriod: data.data_period || '2° Semestre 2025',
           verdict
-        };
+        });
       }
     } catch (e) {
-      console.log('Query Supabase fallita');
+      console.log('Errore lettura dati OMI Supabase', e);
     }
 
-    if (!matchData && DEFAULT_OMI_DATA[city]) {
-      const found = DEFAULT_OMI_DATA[city].find(item => item.zone === zone && item.op === operationType)
-        || DEFAULT_OMI_DATA[city].find(item => item.zone === zone);
-
-      if (found) {
-        matchData = {
-          city,
-          zone: found.zone,
-          operationType,
-          domDays: found.dom,
-          discountPercent: found.discount,
-          demandRatio: found.ratio,
-          ntnVolume: found.ntn,
-          score: found.score,
-          dataPeriod: found.period,
-          verdict: { label: found.label, status: found.status, risk: found.risk }
-        };
-      }
-    }
-
-    if (!matchData) {
-      matchData = {
-        city,
-        zone,
-        operationType,
-        domDays: operationType === 'VENDITA' ? 45 : 14,
-        discountPercent: 3.5,
-        demandRatio: 4.4,
-        ntnVolume: 160,
-        score: 85,
-        dataPeriod: '2° Semestre 2025',
-        verdict: { label: 'ZONA AD ALTA LIQUIDITÀ', status: 'GREEN', risk: 'Basso Rischio Incastro (< 60 giorni)' }
-      };
-    }
-
-    setAnalyzedData(matchData);
     setLoading(false);
   };
 
@@ -223,6 +129,8 @@ export default function MarketIntelligencePage() {
                 <option value="Torino">Torino</option>
                 <option value="Firenze">Firenze</option>
                 <option value="Napoli">Napoli</option>
+                <option value="Verona">Verona</option>
+                <option value="Bergamo">Bergamo</option>
               </select>
             </div>
 
@@ -294,6 +202,11 @@ export default function MarketIntelligencePage() {
                   <h2 className="text-2xl sm:text-3xl font-black">{analyzedData.verdict.risk}</h2>
                   <p className="text-xs opacity-80 max-w-xl">
                     Dati elaborati sulla base delle registrazioni ufficiali OMI dell'Agenzia delle Entrate per la micro-zona selezionata ({analyzedData.dataPeriod}).
+                    {analyzedData.valMin && (
+                      <span className="block mt-1 font-bold text-amber-300">
+                        Quotazione OMI m²: {analyzedData.valMin.toLocaleString('it-IT')} € - {analyzedData.valMax.toLocaleString('it-IT')} €/m²
+                      </span>
+                    )}
                   </p>
                 </div>
 
