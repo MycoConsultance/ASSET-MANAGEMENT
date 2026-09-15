@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import DashboardNavbar from '@/components/DashboardNavbar';
 
+const FALLBACK_CITIES = ['Milano', 'Roma', 'Bologna', 'Torino', 'Firenze', 'Napoli', 'Verona', 'Bergamo'];
+
 export default function MarketIntelligencePage() {
   const supabase = createClient();
   
   const [allRecords, setAllRecords] = useState<any[]>([]);
-  const [availableCities, setAvailableCities] = useState<string[]>([]);
-  const [city, setCity] = useState('');
+  const [availableCities, setAvailableCities] = useState<string[]>(FALLBACK_CITIES);
+  const [city, setCity] = useState('Milano');
   const [availableZones, setAvailableZones] = useState<string[]>([]);
   const [zone, setZone] = useState('');
   const [operationType, setOperationType] = useState<'VENDITA' | 'AFFITTO'>('VENDITA');
@@ -17,7 +19,7 @@ export default function MarketIntelligencePage() {
   const [loading, setLoading] = useState(true);
   const [analyzedData, setAnalyzedData] = useState<any>(null);
 
-  // 1. Carica TUTTI i record OMI reali dal database Supabase
+  // 1. Carica i dati OMI da Supabase
   useEffect(() => {
     async function fetchOmiData() {
       setLoading(true);
@@ -27,21 +29,21 @@ export default function MarketIntelligencePage() {
           .select('*');
 
         if (error) {
-          console.error('Errore Supabase:', error);
+          console.error('Errore lettura Supabase:', error);
         }
 
         if (data && data.length > 0) {
           setAllRecords(data);
-          // Estrai città uniche presenti nel database
-          const cities = Array.from(new Set(data.map(item => item.city))).sort();
-          setAvailableCities(cities);
-          
-          // Imposta città predefinita (Milano o la prima disponibile)
-          const defaultCity = cities.find(c => c.toLowerCase() === 'milano') || cities[0];
-          setCity(defaultCity);
+          const cities = Array.from(new Set(data.map((item: any) => item.city))).sort();
+          if (cities.length > 0) {
+            setAvailableCities(cities);
+            if (!cities.includes(city)) {
+              setCity(cities[0]);
+            }
+          }
         }
       } catch (err) {
-        console.error('Errore di connessione:', err);
+        console.error('Errore connessione DB:', err);
       } finally {
         setLoading(false);
       }
@@ -50,25 +52,27 @@ export default function MarketIntelligencePage() {
     fetchOmiData();
   }, [supabase]);
 
-  // 2. Quando cambia la Città, aggiorna le Micro-Zone disponibili per quella Città
+  // 2. Filtra le Micro-Zone in base alla Città selezionata
   useEffect(() => {
-    if (!city || allRecords.length === 0) return;
+    if (!city) return;
 
-    const cityZones = allRecords
-      .filter(item => item.city.toLowerCase() === city.toLowerCase())
-      .map(item => item.zone_name);
+    if (allRecords.length > 0) {
+      const cityZones = allRecords
+        .filter(item => item.city.toLowerCase() === city.toLowerCase())
+        .map(item => item.zone_name);
 
-    const uniqueZones = Array.from(new Set(cityZones)).sort();
-    setAvailableZones(uniqueZones);
+      const uniqueZones = Array.from(new Set(cityZones)).sort();
+      setAvailableZones(uniqueZones);
 
-    if (uniqueZones.length > 0) {
-      setZone(uniqueZones[0]);
-    } else {
-      setZone('');
+      if (uniqueZones.length > 0) {
+        setZone(uniqueZones[0]);
+      } else {
+        setZone('');
+      }
     }
   }, [city, allRecords]);
 
-  // 3. Esegue l'analisi per la zona selezionata
+  // 3. Elabora l'analisi per la zona selezionata
   const handleRunAnalysis = () => {
     if (!zone || !city || allRecords.length === 0) return;
 
@@ -112,7 +116,7 @@ export default function MarketIntelligencePage() {
     if (zone) {
       handleRunAnalysis();
     }
-  }, [zone, operationType]);
+  }, [zone, operationType, allRecords]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -144,8 +148,7 @@ export default function MarketIntelligencePage() {
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                disabled={loading}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:opacity-50"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
               >
                 {availableCities.map((c, idx) => (
                   <option key={idx} value={c}>{c}</option>
@@ -158,7 +161,7 @@ export default function MarketIntelligencePage() {
               <select
                 value={zone}
                 onChange={(e) => setZone(e.target.value)}
-                disabled={loading || availableZones.length === 0}
+                disabled={availableZones.length === 0}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:opacity-50"
               >
                 {availableZones.length > 0 ? (
@@ -166,7 +169,7 @@ export default function MarketIntelligencePage() {
                     <option key={idx} value={z}>{z}</option>
                   ))
                 ) : (
-                  <option value="">Nessuna zona trovata</option>
+                  <option value="">{loading ? 'Caricamento zone...' : 'Seleziona una città'}</option>
                 )}
               </select>
             </div>
@@ -198,7 +201,7 @@ export default function MarketIntelligencePage() {
             disabled={loading || !zone}
             className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            {loading ? 'Interrogazione Banca Dati OMI in corso...' : '⚡ Analizza Liquidità Zona'}
+            {loading ? 'Caricamento Banca Dati OMI in corso...' : '⚡ Analizza Liquidità Zona'}
           </button>
         </div>
 
