@@ -32,8 +32,8 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const url = request.nextUrl.clone();
 
-  // 1. Se utente non autenticato tenta di accedere a rotte protette -> Redirect Login
-  if (!user && (url.pathname.startsWith('/dashboard') || url.pathname.startsWith('/admin'))) {
+  // 1. Se non autenticato e prova ad andare in dashboard, admin o shared -> Login
+  if (!user && (url.pathname.startsWith('/dashboard') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/shared'))) {
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
@@ -41,13 +41,13 @@ export async function middleware(request: NextRequest) {
   if (user) {
     const role = user.user_metadata?.role || 'investor';
 
-    // 2. Protezione Rotta ADMIN: Solo gli Admin possono accedere a /admin/*
+    // 2. Protezione ADMIN
     if (url.pathname.startsWith('/admin') && role !== 'admin') {
       url.pathname = '/dashboard';
       return NextResponse.redirect(url);
     }
 
-    // 3. Segregazione FORNITORE: I fornitori non navigano la dashboard dell'investitore
+    // 3. Segregazione FORNITORE
     if (role === 'vendor' && url.pathname.startsWith('/dashboard')) {
       url.pathname = '/shared';
       return NextResponse.redirect(url);
@@ -58,5 +58,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/shared/:path*'],
+  matcher: ['/', '/dashboard/:path*', '/admin/:path*', '/shared/:path*'],
 };
