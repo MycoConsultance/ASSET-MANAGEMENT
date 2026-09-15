@@ -40,7 +40,7 @@ export default function MarketIntelligencePage() {
         }
       } catch (err) {
         console.error('Errore DB:', err);
-      } font-medium {
+      } finally {
         setLoading(false);
       }
     }
