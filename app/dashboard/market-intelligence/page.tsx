@@ -1,88 +1,111 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import DashboardNavbar from '@/components/DashboardNavbar';
 
 export default function MarketIntelligencePage() {
   const supabase = createClient();
   
-  const [city, setCity] = useState('Milano');
+  const [allRecords, setAllRecords] = useState<any[]>([]);
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [city, setCity] = useState('');
   const [availableZones, setAvailableZones] = useState<string[]>([]);
   const [zone, setZone] = useState('');
   const [operationType, setOperationType] = useState<'VENDITA' | 'AFFITTO'>('VENDITA');
   
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [analyzedData, setAnalyzedData] = useState<any>(null);
 
+  // 1. Carica TUTTI i record OMI reali dal database Supabase
   useEffect(() => {
-    async function loadZones() {
+    async function fetchOmiData() {
+      setLoading(true);
       try {
-        // Query case-insensitive per trovare sia 'Milano' che 'MILANO' su Supabase
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('market_zone_analytics')
-          .select('zone_name')
-          .ilike('city', city);
-        
+          .select('*');
+
+        if (error) {
+          console.error('Errore Supabase:', error);
+        }
+
         if (data && data.length > 0) {
-          const dbZones = Array.from(new Set(data.map(item => item.zone_name)));
-          setAvailableZones(dbZones);
-          setZone(dbZones[0]);
-          return;
+          setAllRecords(data);
+          // Estrai città uniche presenti nel database
+          const cities = Array.from(new Set(data.map(item => item.city))).sort();
+          setAvailableCities(cities);
+          
+          // Imposta città predefinita (Milano o la prima disponibile)
+          const defaultCity = cities.find(c => c.toLowerCase() === 'milano') || cities[0];
+          setCity(defaultCity);
         }
       } catch (err) {
-        console.log('Query Supabase fallita', err);
+        console.error('Errore di connessione:', err);
+      } finally {
+        setLoading(false);
       }
-      
-      setAvailableZones([]);
+    }
+
+    fetchOmiData();
+  }, [supabase]);
+
+  // 2. Quando cambia la Città, aggiorna le Micro-Zone disponibili per quella Città
+  useEffect(() => {
+    if (!city || allRecords.length === 0) return;
+
+    const cityZones = allRecords
+      .filter(item => item.city.toLowerCase() === city.toLowerCase())
+      .map(item => item.zone_name);
+
+    const uniqueZones = Array.from(new Set(cityZones)).sort();
+    setAvailableZones(uniqueZones);
+
+    if (uniqueZones.length > 0) {
+      setZone(uniqueZones[0]);
+    } else {
       setZone('');
     }
+  }, [city, allRecords]);
 
-    loadZones();
-  }, [city, supabase]);
+  // 3. Esegue l'analisi per la zona selezionata
+  const handleRunAnalysis = () => {
+    if (!zone || !city || allRecords.length === 0) return;
 
-  const handleRunAnalysis = async () => {
-    if (!zone) return;
-    setLoading(true);
+    const matched = allRecords.find(
+      item =>
+        item.city.toLowerCase() === city.toLowerCase() &&
+        item.zone_name === zone &&
+        item.operation_type === operationType
+    ) || allRecords.find(
+      item =>
+        item.city.toLowerCase() === city.toLowerCase() &&
+        item.zone_name === zone
+    );
 
-    try {
-      const { data } = await supabase
-        .from('market_zone_analytics')
-        .select('*')
-        .ilike('city', city)
-        .eq('zone_name', zone)
-        .eq('operation_type', operationType)
-        .maybeSingle();
-
-      if (data) {
-        let verdict = { label: 'ZONA AD ALTA LIQUIDITÀ', status: 'GREEN', risk: 'Basso Rischio Incastro (< 60 giorni)' };
-        if (data.iai_score < 50) {
-          verdict = { label: 'ZONA ILLIQUIDA / SATURA', status: 'RED', risk: 'Alto Rischio Incastro (> 120 giorni)' };
-        } else if (data.iai_score < 75) {
-          verdict = { label: 'ZONA NEUTRA', status: 'YELLOW', risk: 'Valutare con sconto di acquisto (60-120 giorni)' };
-        }
-
-        setAnalyzedData({
-          city: data.city,
-          zone: data.zone_name,
-          operationType: data.operation_type,
-          domDays: data.dom_days,
-          discountPercent: data.discount_percent,
-          demandRatio: data.demand_supply_ratio,
-          ntnVolume: data.ntn_annual_volume,
-          score: data.iai_score,
-          valMin: data.val_m2_min,
-          valMax: data.val_m2_max,
-          dataPeriod: data.data_period || '2° Semestre 2025',
-          verdict
-        });
+    if (matched) {
+      let verdict = { label: 'ZONA AD ALTA LIQUIDITÀ', status: 'GREEN', risk: 'Basso Rischio Incastro (< 60 giorni)' };
+      if (matched.iai_score < 50) {
+        verdict = { label: 'ZONA ILLIQUIDA / SATURA', status: 'RED', risk: 'Alto Rischio Incastro (> 120 giorni)' };
+      } else if (matched.iai_score < 75) {
+        verdict = { label: 'ZONA NEUTRA', status: 'YELLOW', risk: 'Valutare con sconto di acquisto (60-120 giorni)' };
       }
-    } catch (e) {
-      console.log('Errore lettura dati OMI Supabase', e);
-    }
 
-    setLoading(false);
+      setAnalyzedData({
+        city: matched.city,
+        zone: matched.zone_name,
+        operationType: matched.operation_type,
+        domDays: matched.dom_days,
+        discountPercent: matched.discount_percent,
+        demandRatio: matched.demand_supply_ratio,
+        ntnVolume: matched.ntn_annual_volume,
+        score: matched.iai_score,
+        valMin: matched.val_m2_min,
+        valMax: matched.val_m2_max,
+        dataPeriod: matched.data_period || '2° Semestre 2025',
+        verdict
+      });
+    }
   };
 
   useEffect(() => {
@@ -121,16 +144,12 @@ export default function MarketIntelligencePage() {
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                disabled={loading}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:opacity-50"
               >
-                <option value="Milano">Milano</option>
-                <option value="Roma">Roma</option>
-                <option value="Bologna">Bologna</option>
-                <option value="Torino">Torino</option>
-                <option value="Firenze">Firenze</option>
-                <option value="Napoli">Napoli</option>
-                <option value="Verona">Verona</option>
-                <option value="Bergamo">Bergamo</option>
+                {availableCities.map((c, idx) => (
+                  <option key={idx} value={c}>{c}</option>
+                ))}
               </select>
             </div>
 
@@ -139,11 +158,16 @@ export default function MarketIntelligencePage() {
               <select
                 value={zone}
                 onChange={(e) => setZone(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                disabled={loading || availableZones.length === 0}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:opacity-50"
               >
-                {availableZones.map((z, idx) => (
-                  <option key={idx} value={z}>{z}</option>
-                ))}
+                {availableZones.length > 0 ? (
+                  availableZones.map((z, idx) => (
+                    <option key={idx} value={z}>{z}</option>
+                  ))
+                ) : (
+                  <option value="">Nessuna zona trovata</option>
+                )}
               </select>
             </div>
 
@@ -171,8 +195,8 @@ export default function MarketIntelligencePage() {
 
           <button
             onClick={handleRunAnalysis}
-            disabled={loading}
-            className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2"
+            disabled={loading || !zone}
+            className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading ? 'Interrogazione Banca Dati OMI in corso...' : '⚡ Analizza Liquidità Zona'}
           </button>
@@ -204,7 +228,7 @@ export default function MarketIntelligencePage() {
                     Dati elaborati sulla base delle registrazioni ufficiali OMI dell'Agenzia delle Entrate per la micro-zona selezionata ({analyzedData.dataPeriod}).
                     {analyzedData.valMin && (
                       <span className="block mt-1 font-bold text-amber-300">
-                        Quotazione OMI m²: {analyzedData.valMin.toLocaleString('it-IT')} € - {analyzedData.valMax.toLocaleString('it-IT')} €/m²
+                        Quotazione Ufficiale OMI: {analyzedData.valMin.toLocaleString('it-IT')} € - {analyzedData.valMax.toLocaleString('it-IT')} €/m²
                       </span>
                     )}
                   </p>
