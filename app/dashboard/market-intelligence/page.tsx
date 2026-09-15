@@ -19,11 +19,12 @@ export default function MarketIntelligencePage() {
   const [loading, setLoading] = useState(true);
   const [analyzedData, setAnalyzedData] = useState<any>(null);
 
-  // Stato Filtri Comparativi (CMA)
+  // Comparabili reali da Supabase
+  const [realComparables, setRealComparables] = useState<any[]>([]);
   const [selectedTaglio, setSelectedTaglio] = useState<string>('TUTTI');
   const [maxPrice, setMaxPrice] = useState<number>(1500000);
 
-  // 1. Carica dati da Supabase
+  // 1. Carica Macro-Zone da Supabase
   useEffect(() => {
     async function fetchOmiData() {
       setLoading(true);
@@ -39,7 +40,7 @@ export default function MarketIntelligencePage() {
         }
       } catch (err) {
         console.error('Errore DB:', err);
-      } finally {
+      } font-medium {
         setLoading(false);
       }
     }
@@ -60,7 +61,28 @@ export default function MarketIntelligencePage() {
     }
   }, [city, allRecords]);
 
-  // 3. Analisi Ibrida (Live API vs OMI)
+  // 3. QUERY REALE A market_comparables (NO MOCK)
+  useEffect(() => {
+    async function fetchRealComparables() {
+      if (!city || !zone) return;
+      
+      const { data, error } = await supabase
+        .from('market_comparables')
+        .select('*')
+        .ilike('city', city)
+        .eq('zone_name', zone)
+        .order('transaction_date', { ascending: false });
+
+      if (!error && data) {
+        setRealComparables(data);
+      } else {
+        setRealComparables([]);
+      }
+    }
+    fetchRealComparables();
+  }, [city, zone, supabase]);
+
+  // 4. Analisi Ibrida (Live API vs OMI)
   const handleRunAnalysis = async () => {
     if (!zone || !city) return;
     setLoading(true);
@@ -140,40 +162,12 @@ export default function MarketIntelligencePage() {
     if (zone) handleRunAnalysis();
   }, [zone, operationType, allRecords]);
 
-  // GENERATORE DINAMICO COMPARATIVI DI MERCATO (CMA)
-  const generateComparables = () => {
-    if (!analyzedData) return [];
-    const avgPriceM2 = ((analyzedData.valMin || 3000) + (analyzedData.valMax || 4500)) / 2;
-    const sourceLabel = analyzedData.isLiveApi ? 'Immobiliare.it' : 'Rogito OMI';
-
-    const baseComparables = [
-      { id: '1', type: 'Bilocale', surface: 55, date: '2026-08-14', status: analyzedData.isLiveApi ? 'In Vendita' : 'Rogitato' },
-      { id: '2', type: 'Bilocale', surface: 62, date: '2026-07-22', status: analyzedData.isLiveApi ? 'In Vendita' : 'Rogitato' },
-      { id: '3', type: 'Trilocale', surface: 85, date: '2026-06-30', status: analyzedData.isLiveApi ? 'In Vendita' : 'Rogitato' },
-      { id: '4', type: 'Trilocale', surface: 95, date: '2026-05-18', status: analyzedData.isLiveApi ? 'In Vendita' : 'Rogitato' },
-      { id: '5', type: 'Monolocale', surface: 40, date: '2026-04-05', status: analyzedData.isLiveApi ? 'In Vendita' : 'Rogitato' },
-    ];
-
-    return baseComparables
-      .map((item, idx) => {
-        const factor = 0.95 + (idx * 0.03);
-        const priceM2 = Math.round(avgPriceM2 * factor);
-        const totalPrice = priceM2 * item.surface;
-        return {
-          ...item,
-          priceM2,
-          totalPrice,
-          source: sourceLabel
-        };
-      })
-      .filter(item => {
-        const matchTaglio = selectedTaglio === 'TUTTI' || item.type === selectedTaglio;
-        const matchPrice = item.totalPrice <= maxPrice;
-        return matchTaglio && matchPrice;
-      });
-  };
-
-  const dynamicComparables = generateComparables();
+  // Filtra comparabili reali da DB
+  const filteredComparables = realComparables.filter(item => {
+    const matchTaglio = selectedTaglio === 'TUTTI' || item.property_type.toLowerCase().includes(selectedTaglio.toLowerCase());
+    const matchPrice = item.price <= maxPrice;
+    return matchTaglio && matchPrice;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -315,12 +309,12 @@ export default function MarketIntelligencePage() {
               </div>
             </div>
 
-            {/* TABELLA ANALISI COMPARATIVI DI MERCATO (CMA) */}
+            {/* TABELLA REALE COMPARATIVI DI MERCATO (CMA DA SUPABASE) */}
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900">🏢 Analisi Comparativi di Mercato (CMA)</h3>
-                  <p className="text-xs text-slate-500">Transazioni registrate e annunci attivi nella micro-zona di {analyzedData.zone}</p>
+                  <p className="text-xs text-slate-500">Compravendite reali registrate nel database per la zona di {analyzedData.zone}</p>
                 </div>
 
                 {/* FILTRI INTERATTIVI */}
@@ -354,25 +348,23 @@ export default function MarketIntelligencePage() {
                     <tr>
                       <th className="py-3 px-4">Taglio / Tipologia</th>
                       <th className="py-3 px-4">Superficie</th>
-                      <th className="py-3 px-4">Prezzo Totale Stimato</th>
+                      <th className="py-3 px-4">Prezzo Totale</th>
                       <th className="py-3 px-4">Prezzo €/m²</th>
                       <th className="py-3 px-4">Data Registrazione</th>
                       <th className="py-3 px-4">Fonte & Stato</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {dynamicComparables.length > 0 ? (
-                      dynamicComparables.map((item) => (
+                    {filteredComparables.length > 0 ? (
+                      filteredComparables.map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                          <td className="py-3 px-4 font-bold text-slate-900">{item.type}</td>
-                          <td className="py-3 px-4 font-mono">{item.surface} m²</td>
-                          <td className="py-3 px-4 font-mono text-slate-900 font-bold">{item.totalPrice.toLocaleString('it-IT')} €</td>
-                          <td className="py-3 px-4 font-mono text-amber-600 font-bold">{item.priceM2.toLocaleString('it-IT')} €/m²</td>
-                          <td className="py-3 px-4 font-mono">{item.date}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{item.property_type}</td>
+                          <td className="py-3 px-4 font-mono">{item.surface_m2} m²</td>
+                          <td className="py-3 px-4 font-mono text-slate-900 font-bold">{Number(item.price).toLocaleString('it-IT')} €</td>
+                          <td className="py-3 px-4 font-mono text-amber-600 font-bold">{Math.round(item.price_m2).toLocaleString('it-IT')} €/m²</td>
+                          <td className="py-3 px-4 font-mono">{item.transaction_date}</td>
                           <td className="py-3 px-4">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                              analyzedData.isLiveApi ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-700'
-                            }`}>
+                            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[10px] font-bold">
                               {item.source} • {item.status}
                             </span>
                           </td>
@@ -381,7 +373,7 @@ export default function MarketIntelligencePage() {
                     ) : (
                       <tr>
                         <td colSpan={6} className="py-6 text-center text-slate-400">
-                          Nessun comparabile trovato per il taglio o prezzo selezionato.
+                          Nessun comparabile reale registrato in database per i filtri selezionati.
                         </td>
                       </tr>
                     )}
