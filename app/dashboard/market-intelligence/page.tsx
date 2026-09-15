@@ -19,7 +19,7 @@ export default function MarketIntelligencePage() {
   const [loading, setLoading] = useState(true);
   const [analyzedData, setAnalyzedData] = useState<any>(null);
 
-  // 1. Carica i dati OMI da Supabase
+  // 1. Carica dati da Supabase
   useEffect(() => {
     async function fetchOmiData() {
       setLoading(true);
@@ -28,22 +28,16 @@ export default function MarketIntelligencePage() {
           .from('market_zone_analytics')
           .select('*');
 
-        if (error) {
-          console.error('Errore lettura Supabase:', error);
-        }
-
         if (data && data.length > 0) {
           setAllRecords(data);
           const cities = Array.from(new Set(data.map((item: any) => item.city))).sort();
           if (cities.length > 0) {
             setAvailableCities(cities);
-            if (!cities.includes(city)) {
-              setCity(cities[0]);
-            }
+            if (!cities.includes(city)) setCity(cities[0]);
           }
         }
       } catch (err) {
-        console.error('Errore connessione DB:', err);
+        console.error('Errore DB:', err);
       } finally {
         setLoading(false);
       }
@@ -52,7 +46,7 @@ export default function MarketIntelligencePage() {
     fetchOmiData();
   }, [supabase]);
 
-  // 2. Filtra le Micro-Zone in base alla Città selezionata
+  // 2. Filtra Micro-Zone per la Città selezionata
   useEffect(() => {
     if (!city) return;
 
@@ -63,28 +57,62 @@ export default function MarketIntelligencePage() {
 
       const uniqueZones = Array.from(new Set(cityZones)).sort();
       setAvailableZones(uniqueZones);
-
-      if (uniqueZones.length > 0) {
-        setZone(uniqueZones[0]);
-      } else {
-        setZone('');
-      }
+      if (uniqueZones.length > 0) setZone(uniqueZones[0]);
     }
   }, [city, allRecords]);
 
-  // 3. Elabora l'analisi per la zona selezionata
-  const handleRunAnalysis = () => {
-    if (!zone || !city || allRecords.length === 0) return;
+  // 3. Analisi ibrida: Immobiliare.it API (se Milano Duomo) o Supabase OMI (altre zone)
+  const handleRunAnalysis = async () => {
+    if (!zone || !city) return;
+    setLoading(true);
 
+    // Controlla se la zona corrente ha la copertura Sandbox Immobiliare.it
+    const isDuomoSandbox = 
+      city.toLowerCase() === 'milano' && 
+      (zone.toLowerCase().includes('duomo') || zone.toLowerCase().includes('vittorio emanuele'));
+
+    if (isDuomoSandbox) {
+      try {
+        const res = await fetch(`/api/immobiliare?city=${encodeURIComponent(city)}&zone=${encodeURIComponent(zone)}`);
+        const immData = await res.json();
+
+        if (immData.isSandbox) {
+          setAnalyzedData({
+            city: city,
+            zone: zone,
+            operationType: operationType,
+            domDays: immData.metrics.dom_days_avg,
+            discountPercent: immData.metrics.discount_percent_avg,
+            demandRatio: immData.metrics.demand_supply_ratio,
+            ntnVolume: immData.metrics.active_listings_count,
+            score: immData.metrics.iai_score,
+            valMin: immData.metrics.asking_price_m2_min,
+            valMax: immData.metrics.asking_price_m2_max,
+            dataPeriod: 'Settembre 2026 (Live API)',
+            isLiveApi: true,
+            apiSource: 'Immobiliare.it Insights Sandbox',
+            verdict: {
+              label: 'ZONA PREMIUM HIGH-LIQUIDITY',
+              status: 'GREEN',
+              risk: 'Basso Rischio Incastro (Market Demand Max)'
+            }
+          });
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.error('Errore fetch API Immobiliare.it, fallback a OMI', e);
+      }
+    }
+
+    // Fallback standard su database OMI Supabase
     const matched = allRecords.find(
       item =>
         item.city.toLowerCase() === city.toLowerCase() &&
         item.zone_name === zone &&
         item.operation_type === operationType
     ) || allRecords.find(
-      item =>
-        item.city.toLowerCase() === city.toLowerCase() &&
-        item.zone_name === zone
+      item => item.city.toLowerCase() === city.toLowerCase() && item.zone_name === zone
     );
 
     if (matched) {
@@ -107,9 +135,13 @@ export default function MarketIntelligencePage() {
         valMin: matched.val_m2_min,
         valMax: matched.val_m2_max,
         dataPeriod: matched.data_period || '2° Semestre 2025',
+        isLiveApi: false,
+        apiSource: 'Agenzia delle Entrate (OMI)',
         verdict
       });
     }
+
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -131,15 +163,20 @@ export default function MarketIntelligencePage() {
               Market Intelligence & Risk Analysis
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Banca Dati OMI Agenzia delle Entrate & Algoritmo IAI integrato in tempo reale
+              Integrazione Hybrid: OMI Agenzia delle Entrate & API Immobiliare.it Insights
             </p>
           </div>
-          <span className="bg-amber-500 text-slate-950 font-black text-[9px] px-3 py-1 rounded-full uppercase tracking-wider">
-            OMI Data: {analyzedData?.dataPeriod || '2° Semestre 2025'}
+          
+          <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${
+            analyzedData?.isLiveApi 
+              ? 'bg-blue-600 text-white animate-pulse' 
+              : 'bg-amber-500 text-slate-950'
+          }`}>
+            {analyzedData?.isLiveApi ? '📡 API Live Immobiliare.it Sandbox' : `OMI Data: ${analyzedData?.dataPeriod || '2° Semestre 2025'}`}
           </span>
         </div>
 
-        {/* BARRA DI SELEZIONE PARAMETRICA */}
+        {/* BARRA SELEZIONE PARAMETRICA */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             
@@ -164,13 +201,9 @@ export default function MarketIntelligencePage() {
                 disabled={availableZones.length === 0}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:opacity-50"
               >
-                {availableZones.length > 0 ? (
-                  availableZones.map((z, idx) => (
-                    <option key={idx} value={z}>{z}</option>
-                  ))
-                ) : (
-                  <option value="">{loading ? 'Caricamento zone...' : 'Seleziona una città'}</option>
-                )}
+                {availableZones.map((z, idx) => (
+                  <option key={idx} value={z}>{z}</option>
+                ))}
               </select>
             </div>
 
@@ -199,13 +232,13 @@ export default function MarketIntelligencePage() {
           <button
             onClick={handleRunAnalysis}
             disabled={loading || !zone}
-            className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2"
           >
-            {loading ? 'Caricamento Banca Dati OMI in corso...' : '⚡ Analizza Liquidità Zona'}
+            {loading ? 'Caricamento dati in corso...' : '⚡ Analizza Liquidità Zona'}
           </button>
         </div>
 
-        {/* RISULTATO IAI SCORE */}
+        {/* RISULTATO ANALYSIS */}
         {analyzedData && (
           <div className="space-y-6">
             
@@ -228,10 +261,10 @@ export default function MarketIntelligencePage() {
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-black">{analyzedData.verdict.risk}</h2>
                   <p className="text-xs opacity-80 max-w-xl">
-                    Dati elaborati sulla base delle registrazioni ufficiali OMI dell'Agenzia delle Entrate per la micro-zona selezionata ({analyzedData.dataPeriod}).
+                    Fonte Dati: <strong className="text-amber-300">{analyzedData.apiSource}</strong> ({analyzedData.dataPeriod}).
                     {analyzedData.valMin && (
                       <span className="block mt-1 font-bold text-amber-300">
-                        Quotazione Ufficiale OMI: {analyzedData.valMin.toLocaleString('it-IT')} € - {analyzedData.valMax.toLocaleString('it-IT')} €/m²
+                        Quotazione al m² ({analyzedData.isLiveApi ? 'Asking Price Live' : 'Valore OMI Registrato'}): {analyzedData.valMin.toLocaleString('it-IT')} € - {analyzedData.valMax.toLocaleString('it-IT')} €/m²
                       </span>
                     )}
                   </p>
@@ -264,17 +297,10 @@ export default function MarketIntelligencePage() {
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Volume Scambi NTN</span>
-                <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.ntnVolume} <span className="text-xs font-normal text-slate-400">/anno</span></p>
-                <span className="text-[10px] text-slate-500 block">Compravendite registrate OMI</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">{analyzedData.isLiveApi ? 'Annunci Attivi' : 'Volume Scambi NTN'}</span>
+                <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.ntnVolume} <span className="text-xs font-normal text-slate-400">{analyzedData.isLiveApi ? 'attivi' : '/anno'}</span></p>
+                <span className="text-[10px] text-slate-500 block">{analyzedData.isLiveApi ? 'Campione portale Immobiliare.it' : 'Compravendite registrate OMI'}</span>
               </div>
-            </div>
-
-            <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 text-[11px] text-slate-500 space-y-1 leading-relaxed">
-              <p className="font-bold text-slate-700 uppercase text-[10px]">⚖️ Nota di Trasparenza & Disclaimer AI</p>
-              <p>
-                L'Indice di Assorbimento Immobiliare (IAI) è generato mediante elaborazioni algoritmiche di Intelligenza Artificiale basate sui dati ufficiali OMI (Fonte: Agenzia delle Entrate, aggiornamento {analyzedData.dataPeriod}), ISTAT e aggregatori immobiliari. Il verdetto costituisce un indicatore probabilistico di supporto decisionale.
-              </p>
             </div>
 
           </div>
