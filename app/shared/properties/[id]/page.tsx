@@ -1,156 +1,268 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { useSearchParams } from 'next/navigation';
-import { formatCurrency } from '@/lib/formatters';
+import { useState } from 'react';
+import VendorNavbar from '@/components/VendorNavbar';
 
-export default function SharedPropertyPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const searchParams = useSearchParams();
-  const token = searchParams.get('token');
-  const supabase = createClient();
+export default function SharedAssetDetailPage() {
+  const [activeTab, setActiveTab] = useState<'DOCUMENTI' | 'SAL'>('DOCUMENTI');
+  const [newComment, setNewComment] = useState('');
 
-  const [property, setProperty] = useState<any>(null);
-  const [partnerAssoc, setPartnerAssoc] = useState<any>(null);
-  const [quotes, setQuotes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Profile Update State
-  const [editBio, setEditBio] = useState('');
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileMsg, setProfileMsg] = useState('');
-
-  useEffect(() => {
-    async function init() {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
-      const { data: assoc } = await supabase
-        .from('property_partners')
-        .select('*, partner:partner_id(*)')
-        .eq('property_id', resolvedParams.id)
-        .eq('access_token', token)
-        .single();
-
-      if (assoc) {
-        setPartnerAssoc(assoc);
-        if (assoc.partner) setEditBio(assoc.partner.bio_full || assoc.partner.description || '');
-
-        const { data: prop } = await supabase.from('properties').select('*').eq('id', resolvedParams.id).single();
-        if (prop) setProperty(prop);
-
-        const { data: qData } = await supabase.from('property_quotes').select('*').eq('property_id', resolvedParams.id);
-        if (qData) setQuotes(qData);
-      }
-      setLoading(false);
+  // Mock Documenti con Micro-Feed Note Contestuali
+  const [documents, setDocuments] = useState([
+    {
+      id: 'doc-1',
+      title: 'Tavola Progetto Esecutivo A2.pdf',
+      category: 'CANTIERE',
+      uploadedBy: 'Arch. Stefano Bianchi',
+      date: '12 Set 2026',
+      comments: [
+        { id: 'c1', author: 'EdilCostruzioni Srl', text: 'Richiesto chiarimento su posizione colonna di scarico bagni (Tavola A2).' },
+        { id: 'c2', author: 'Arch. Stefano Bianchi', text: 'Verificato. Allegata revisione quota scarichi al piano.' }
+      ]
+    },
+    {
+      id: 'doc-2',
+      title: 'CILA e Relazione Tecnica Asseverata.pdf',
+      category: 'PRATICHE',
+      uploadedBy: 'Geom. Marco Verdi',
+      date: '05 Set 2026',
+      comments: []
     }
-    init();
-  }, [resolvedParams.id, token, supabase]);
+  ]);
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!partnerAssoc?.partner_id) return;
-    setSavingProfile(true);
-    setProfileMsg('');
-
-    // Invio modifiche in stato di revisione per lo Staff Myco
-    await supabase.from('partners').update({
-      pending_bio: editBio,
-      is_approved: false
-    }).eq('id', partnerAssoc.partner_id);
-
-    setProfileMsg('Modifiche inviate allo Staff Myco per il Controllo Qualità prima della pubblicazione.');
-    setSavingProfile(false);
+  const handleAddComment = (docId: string) => {
+    if (!newComment.trim()) return;
+    setDocuments(prev => prev.map(doc => {
+      if (doc.id === docId) {
+        return {
+          ...doc,
+          comments: [...doc.comments, { id: Date.now().toString(), author: 'EdilCostruzioni Srl', text: newComment }]
+        };
+      }
+      return doc;
+    }));
+    setNewComment('');
   };
 
-  if (loading) return <div className="min-h-screen bg-slate-50 p-8 flex justify-center items-center text-xs text-slate-400 font-sans tracking-widest uppercase">Verifica Magic Link...</div>;
-  if (!partnerAssoc || !property) return <div className="min-h-screen bg-slate-50 p-8 text-xs text-red-500 font-sans">Accesso non autorizzato.</div>;
-
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 py-8 px-4 sm:px-8 font-sans antialiased">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
+      <VendorNavbar />
 
-        {/* HEADER AREA RISERVATA FORNITORE */}
-        <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-md flex justify-between items-center">
-          <div>
-            <span className="bg-amber-500 text-slate-950 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase">
-              Area Riservata Partner
-            </span>
-            <h1 className="text-2xl font-bold mt-1">{property.title}</h1>
-            <p className="text-xs text-slate-400">{property.address}, {property.city}</p>
-          </div>
-          <div className="text-right">
-            <span className="text-[10px] text-slate-400 uppercase">Fornitore Incaricato</span>
-            <p className="text-sm font-bold">{partnerAssoc.partner?.company_name}</p>
+      <main className="py-8 px-4 sm:px-8 max-w-7xl mx-auto space-y-6">
+        
+        {/* 1. HEADER ASSET & PROFILO FORNITORE (TOP BAR) */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="bg-slate-900 text-amber-400 font-black text-[10px] px-3 py-0.5 rounded-full uppercase tracking-wider">
+                  EdilCostruzioni Srl
+                </span>
+                <span className="text-xs text-slate-400 font-medium">• General Contractor Certificato</span>
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                Bilocale Garibaldi
+              </h1>
+              <p className="text-xs font-mono text-slate-500">
+                📍 Via San Carpoforo 8, Milano (MI)
+              </p>
+            </div>
+
+            {/* BADGE FASE & SAL */}
+            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl flex items-center gap-4 shrink-0">
+              <div className="space-y-0.5">
+                <span className="bg-emerald-100 text-emerald-800 font-black text-[9px] px-2.5 py-0.5 rounded-full uppercase">
+                  Fase 3: Cantiere & Restyling
+                </span>
+                <p className="text-xs font-bold text-slate-700">Consegna: <span className="font-mono text-slate-900">28 Nov 2026</span></p>
+              </div>
+
+              <div className="text-right border-l border-slate-200 pl-4 font-mono">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Stato SAL</span>
+                <span className="text-xl font-black text-amber-600">65%</span>
+              </div>
+            </div>
+
           </div>
         </div>
 
-        {/* 2. PREVENTIVI BLOCCATI & LOCK-IN PREZZI */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h2 className="text-base font-bold text-slate-900">Stato Preventivi Incarico</h2>
-            <p className="text-xs text-slate-500">I preventivi approvati dall'investitore sono bloccati in sola lettura</p>
-          </div>
+        {/* LAYOUT PRINCIPALE GRID (CONTENUTI + SIDEBAR TEAM) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* COLONNA PRINCIPALE (2/3): FASCICOLO & NOTE TECNICHE */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* TABS NAVIGAZIONE B2B */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+              <button
+                onClick={() => setActiveTab('DOCUMENTI')}
+                className={`text-xs font-extrabold px-4 py-2 rounded-xl transition ${
+                  activeTab === 'DOCUMENTI'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 bg-white border border-slate-200'
+                }`}
+              >
+                📁 Fascicolo Digitale Asset
+              </button>
+              <button
+                onClick={() => setActiveTab('SAL')}
+                className={`text-xs font-extrabold px-4 py-2 rounded-xl transition ${
+                  activeTab === 'SAL'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 bg-white border border-slate-200'
+                }`}
+              >
+                🏗️ Modulo SAL Cantiere
+              </button>
+            </div>
 
-          <div className="space-y-3">
-            {quotes.map((q) => (
-              <div key={q.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center text-xs">
-                <div>
-                  <h4 className="font-bold text-slate-900">{q.title}</h4>
-                  <span className="text-[10px] text-slate-400">Importo: {formatCurrency(q.amount)}</span>
+            {/* VISTA FASCICOLO & MICRO-FEED */}
+            {activeTab === 'DOCUMENTI' && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                    Documentazione Tecnica di Cantiere
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-400">Accesso Selettivo Partner</span>
                 </div>
-                <div>
-                  {q.status === 'APPROVED_LOCKED' ? (
-                    <span className="bg-emerald-100 text-emerald-800 font-bold text-[10px] px-3 py-1 rounded-full border border-emerald-200">
-                      🔒 PREVENTIVO BLOCCATO & APPROVATO
-                    </span>
-                  ) : (
-                    <span className="bg-amber-100 text-amber-800 font-bold text-[10px] px-3 py-1 rounded-full">
-                      In Attesa Approvazione
-                    </span>
-                  )}
+
+                <div className="space-y-4">
+                  {documents.map((doc) => (
+                    <div key={doc.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">📄</span>
+                          <div>
+                            <h4 className="text-xs font-extrabold text-slate-900">{doc.title}</h4>
+                            <span className="text-[10px] text-slate-400">Caricato da {doc.uploadedBy} • {doc.date}</span>
+                          </div>
+                        </div>
+
+                        <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                          {doc.category}
+                        </span>
+                      </div>
+
+                      {/* MICRO-FEED NOTE CONTESTUALI TRACCIATE */}
+                      <div className="pt-3 border-t border-slate-200 space-y-2.5">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                          Log Notazioni Tecniche
+                        </span>
+
+                        <div className="space-y-2">
+                          {doc.comments.map((c) => (
+                            <div key={c.id} className="bg-white p-3 rounded-xl border border-slate-200 text-xs">
+                              <span className="font-extrabold text-slate-900 text-[10px] block">{c.author}</span>
+                              <p className="text-slate-600 text-[11px] mt-0.5">{c.text}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
+                          <input
+                            type="text"
+                            placeholder="Aggiungi una notifica o nota tecnica su questo file..."
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium"
+                          />
+                          <button
+                            onClick={() => handleAddComment(doc.id)}
+                            className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-xl shrink-0 transition"
+                          >
+                            Invia
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            )}
+
+            {/* VISTA MODULO SAL */}
+            {activeTab === 'SAL' && (
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider border-b border-slate-100 pb-3">
+                  Aggiornamento SAL & Varianti Capitolato
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Modulo operativo riservato all'Impresa Edile per l'aggiornamento avanzamento opere.
+                </p>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <span className="text-xs font-bold text-slate-700 block">Avanzamento Corrente: 65%</span>
+                  <div className="w-full bg-slate-200 h-3 rounded-full mt-2 overflow-hidden">
+                    <div className="bg-amber-500 h-full w-[65%]"></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
+
+          {/* 2. WIDGET SIDEBAR: TEAM DI PROGETTO (INTERLOCUTORI ABILITATI) */}
+          <div className="space-y-4">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <div className="border-b border-slate-100 pb-3">
+                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                  👥 Team di Progetto Asset
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Interlocutori abilitati allo scambio note & atti
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                
+                {/* MYCO CONCIERGE STAFF */}
+                <div className="bg-slate-900 text-white p-3.5 rounded-2xl flex items-center gap-3">
+                  <div className="bg-amber-500 text-slate-950 font-black text-[10px] w-8 h-8 rounded-xl flex items-center justify-center">
+                    MYCO
+                  </div>
+                  <div>
+                    <span className="text-xs font-extrabold block">Staff Myco Concierge</span>
+                    <span className="text-[10px] text-amber-400 font-bold">⚙️ Regia Operativa & Oversight</span>
+                  </div>
+                </div>
+
+                {/* ARCHITETTO / DIRETTORE LAVORI */}
+                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl flex items-center gap-3">
+                  <div className="bg-slate-200 text-slate-700 font-bold text-xs w-8 h-8 rounded-xl flex items-center justify-center">
+                    📐
+                  </div>
+                  <div>
+                    <span className="text-xs font-extrabold text-slate-900 block">Arch. Stefano Bianchi</span>
+                    <span className="text-[10px] text-slate-500 font-bold">Direttore Lavori / Progettista</span>
+                  </div>
+                </div>
+
+                {/* GEOMETRA / PRATICHE CATASTALI */}
+                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl flex items-center gap-3">
+                  <div className="bg-slate-200 text-slate-700 font-bold text-xs w-8 h-8 rounded-xl flex items-center justify-center">
+                    📏
+                  </div>
+                  <div>
+                    <span className="text-xs font-extrabold text-slate-900 block">Geom. Marco Verdi</span>
+                    <span className="text-[10px] text-slate-500 font-bold">Pratiche Catastali & CILA</span>
+                  </div>
+                </div>
+
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[10px] text-slate-400 text-center font-medium">
+                  🔒 Note e file inviati in questo ambiente sono condivisi esclusivamente con il team di questo asset.
+                </p>
+              </div>
+            </div>
+          </div>
+
         </div>
 
-        {/* 4. COMPILAZIONE SCHEDA CON CONTROL QUALITY STAFF */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h2 className="text-base font-bold text-slate-900">Aggiorna Profilo & Presentazione Studio</h2>
-            <p className="text-xs text-slate-500">Le modifiche saranno verificate dallo Staff Myco prima di comparire all'investitore</p>
-          </div>
-
-          {profileMsg && (
-            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl font-medium">
-              ✓ {profileMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleUpdateProfile} className="space-y-3">
-            <div>
-              <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Presentazione & Servizi</label>
-              <textarea
-                value={editBio}
-                onChange={(e) => setEditBio(e.target.value)}
-                className="w-full p-3 border border-slate-200 rounded-xl text-xs h-28"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={savingProfile}
-              className="bg-slate-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl hover:bg-slate-800 transition"
-            >
-              {savingProfile ? 'Invio in corso...' : 'Invia Modifica per Controllo Qualità'}
-            </button>
-          </form>
-        </div>
-
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
