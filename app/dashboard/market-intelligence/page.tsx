@@ -19,15 +19,17 @@ export default function MarketIntelligencePage() {
   const [loading, setLoading] = useState(true);
   const [analyzedData, setAnalyzedData] = useState<any>(null);
 
+  // Stato Filtri Comparabili
+  const [comparables, setComparables] = useState<any[]>([]);
+  const [selectedTaglio, setSelectedTaglio] = useState<string>('TUTTI');
+  const [maxPrice, setMaxPrice] = useState<number>(1500000);
+
   // 1. Carica dati da Supabase
   useEffect(() => {
     async function fetchOmiData() {
       setLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('market_zone_analytics')
-          .select('*');
-
+        const { data } = await supabase.from('market_zone_analytics').select('*');
         if (data && data.length > 0) {
           setAllRecords(data);
           const cities = Array.from(new Set(data.map((item: any) => item.city))).sort();
@@ -42,14 +44,12 @@ export default function MarketIntelligencePage() {
         setLoading(false);
       }
     }
-
     fetchOmiData();
   }, [supabase]);
 
-  // 2. Filtra Micro-Zone per la Città selezionata
+  // 2. Filtra Micro-Zone
   useEffect(() => {
     if (!city) return;
-
     if (allRecords.length > 0) {
       const cityZones = allRecords
         .filter(item => item.city.toLowerCase() === city.toLowerCase())
@@ -61,12 +61,30 @@ export default function MarketIntelligencePage() {
     }
   }, [city, allRecords]);
 
-  // 3. Analisi ibrida: Immobiliare.it API (se Milano Duomo) o Supabase OMI (altre zone)
+  // 3. Fetch Comparabili di dettaglio
+  useEffect(() => {
+    async function fetchComparables() {
+      if (!city || !zone) return;
+      const { data } = await supabase
+        .from('market_comparables')
+        .select('*')
+        .ilike('city', city)
+        .eq('zone_name', zone);
+
+      if (data) {
+        setComparables(data);
+      } else {
+        setComparables([]);
+      }
+    }
+    fetchComparables();
+  }, [city, zone, supabase]);
+
+  // 4. Analisi Ibrida (Live API vs OMI)
   const handleRunAnalysis = async () => {
     if (!zone || !city) return;
     setLoading(true);
 
-    // Controlla se la zona corrente ha la copertura Sandbox Immobiliare.it
     const isDuomoSandbox = 
       city.toLowerCase() === 'milano' && 
       (zone.toLowerCase().includes('duomo') || zone.toLowerCase().includes('vittorio emanuele'));
@@ -101,17 +119,11 @@ export default function MarketIntelligencePage() {
           return;
         }
       } catch (e) {
-        console.error('Errore fetch API Immobiliare.it, fallback a OMI', e);
+        console.error('Errore API Immobiliare.it', e);
       }
     }
 
-    // Fallback standard su database OMI Supabase
     const matched = allRecords.find(
-      item =>
-        item.city.toLowerCase() === city.toLowerCase() &&
-        item.zone_name === zone &&
-        item.operation_type === operationType
-    ) || allRecords.find(
       item => item.city.toLowerCase() === city.toLowerCase() && item.zone_name === zone
     );
 
@@ -145,10 +157,15 @@ export default function MarketIntelligencePage() {
   };
 
   useEffect(() => {
-    if (zone) {
-      handleRunAnalysis();
-    }
+    if (zone) handleRunAnalysis();
   }, [zone, operationType, allRecords]);
+
+  // Filtra comparabili lato client
+  const filteredComparables = comparables.filter(item => {
+    const matchTaglio = selectedTaglio === 'TUTTI' || item.property_type.toLowerCase().includes(selectedTaglio.toLowerCase());
+    const matchPrice = item.price <= maxPrice;
+    return matchTaglio && matchPrice;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -185,7 +202,7 @@ export default function MarketIntelligencePage() {
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900"
               >
                 {availableCities.map((c, idx) => (
                   <option key={idx} value={c}>{c}</option>
@@ -199,7 +216,7 @@ export default function MarketIntelligencePage() {
                 value={zone}
                 onChange={(e) => setZone(e.target.value)}
                 disabled={availableZones.length === 0}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:opacity-50"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-900 disabled:opacity-50"
               >
                 {availableZones.map((z, idx) => (
                   <option key={idx} value={z}>{z}</option>
@@ -213,14 +230,14 @@ export default function MarketIntelligencePage() {
                 <button
                   type="button"
                   onClick={() => setOperationType('VENDITA')}
-                  className={`py-1.5 text-xs font-bold rounded-lg transition ${operationType === 'VENDITA' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`py-1.5 text-xs font-bold rounded-lg transition ${operationType === 'VENDITA' ? 'bg-slate-900 text-white' : 'text-slate-500'}`}
                 >
                   📈 Trading (Vendita)
                 </button>
                 <button
                   type="button"
                   onClick={() => setOperationType('AFFITTO')}
-                  className={`py-1.5 text-xs font-bold rounded-lg transition ${operationType === 'AFFITTO' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'}`}
+                  className={`py-1.5 text-xs font-bold rounded-lg transition ${operationType === 'AFFITTO' ? 'bg-slate-900 text-white' : 'text-slate-500'}`}
                 >
                   🔑 Rent (Affitto)
                 </button>
@@ -232,9 +249,9 @@ export default function MarketIntelligencePage() {
           <button
             onClick={handleRunAnalysis}
             disabled={loading || !zone}
-            className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md flex items-center justify-center gap-2"
+            className="w-full bg-slate-900 text-white text-xs font-bold py-3 rounded-xl hover:bg-slate-800 transition shadow-md"
           >
-            {loading ? 'Caricamento dati in corso...' : '⚡ Analizza Liquidità Zona'}
+            {loading ? 'Caricamento dati...' : '⚡ Analizza Liquidità Zona'}
           </button>
         </div>
 
@@ -242,19 +259,13 @@ export default function MarketIntelligencePage() {
         {analyzedData && (
           <div className="space-y-6">
             
-            <div className={`rounded-3xl p-6 sm:p-8 border shadow-lg transition-all ${
-              analyzedData.verdict.status === 'GREEN'
-                ? 'bg-emerald-950 text-emerald-50 border-emerald-800'
-                : analyzedData.verdict.status === 'YELLOW'
-                ? 'bg-amber-950 text-amber-50 border-amber-800'
-                : 'bg-red-950 text-red-50 border-red-800'
+            <div className={`rounded-3xl p-6 sm:p-8 border shadow-lg ${
+              analyzedData.verdict.status === 'GREEN' ? 'bg-emerald-950 text-emerald-50 border-emerald-800' : 'bg-amber-950 text-amber-50 border-amber-800'
             }`}>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider ${
-                      analyzedData.verdict.status === 'GREEN' ? 'bg-emerald-500 text-slate-950' : analyzedData.verdict.status === 'YELLOW' ? 'bg-amber-500 text-slate-950' : 'bg-red-500 text-white'
-                    }`}>
+                    <span className="px-3 py-1 rounded-full text-xs font-extrabold uppercase bg-emerald-500 text-slate-950">
                       {analyzedData.verdict.label}
                     </span>
                     <span className="text-xs font-mono opacity-75">{analyzedData.city} • {analyzedData.zone}</span>
@@ -264,42 +275,108 @@ export default function MarketIntelligencePage() {
                     Fonte Dati: <strong className="text-amber-300">{analyzedData.apiSource}</strong> ({analyzedData.dataPeriod}).
                     {analyzedData.valMin && (
                       <span className="block mt-1 font-bold text-amber-300">
-                        Quotazione al m² ({analyzedData.isLiveApi ? 'Asking Price Live' : 'Valore OMI Registrato'}): {analyzedData.valMin.toLocaleString('it-IT')} € - {analyzedData.valMax.toLocaleString('it-IT')} €/m²
+                        Quotazione al m²: {analyzedData.valMin.toLocaleString('it-IT')} € - {analyzedData.valMax.toLocaleString('it-IT')} €/m²
                       </span>
                     )}
                   </p>
                 </div>
 
-                <div className="text-center sm:text-right shrink-0 bg-white/10 p-5 rounded-2xl backdrop-blur-md border border-white/10">
-                  <span className="text-[10px] uppercase tracking-wider font-bold block opacity-75">Score IAI Liquidità</span>
+                <div className="text-center sm:text-right bg-white/10 p-5 rounded-2xl backdrop-blur-md">
+                  <span className="text-[10px] uppercase font-bold block opacity-75">Score IAI Liquidità</span>
                   <div className="text-4xl sm:text-5xl font-black mt-1 font-mono">{analyzedData.score} <span className="text-xs font-normal opacity-60">/ 100</span></div>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase">DOM (Giorni Mercato)</span>
-                <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.domDays} <span className="text-xs font-normal text-slate-400">giorni</span></p>
-                <span className="text-[10px] text-slate-500 block">Permanenza media annuncio</span>
+                <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.domDays} <span className="text-xs text-slate-400 font-normal">giorni</span></p>
               </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Sconto Medio Applicato</span>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Sconto Applicato</span>
                 <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.discountPercent}%</p>
-                <span className="text-[10px] text-slate-500 block">Scostamento asking/rogito</span>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Domanda/Offerta</span>
+                <p className="text-2xl font-black text-emerald-600 font-mono">{analyzedData.demandRatio} <span className="text-xs text-slate-400 font-normal">/ 5.0</span></p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Volume Scambi</span>
+                <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.ntnVolume}</p>
+              </div>
+            </div>
+
+            {/* TABELLA COMPARABILI ANALITICI */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">📊 Dati Grezzi & Transazioni Comparabili</h3>
+                  <p className="text-xs text-slate-500">Ispeziona i singoli rogiti e annunci che generano lo Score IAI della zona</p>
+                </div>
+
+                {/* FILTRI INTERATTIVI */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <select
+                    value={selectedTaglio}
+                    onChange={(e) => setSelectedTaglio(e.target.value)}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700"
+                  >
+                    <option value="TUTTI">Tutti i Tagli</option>
+                    <option value="Bilocale">Bilocale</option>
+                    <option value="Trilocale">Trilocale</option>
+                    <option value="Monolocale">Monolocale</option>
+                  </select>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500">Max €:</span>
+                    <input
+                      type="number"
+                      value={maxPrice}
+                      onChange={(e) => setMaxPrice(Number(e.target.value))}
+                      className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1 text-xs font-bold font-mono"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Ratio Domanda/Offerta</span>
-                <p className="text-2xl font-black text-emerald-600 font-mono">{analyzedData.demandRatio} <span className="text-xs font-normal text-slate-400">/ 5.0</span></p>
-                <span className="text-[10px] text-slate-500 block">Pressione acquirenti sui portali</span>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">{analyzedData.isLiveApi ? 'Annunci Attivi' : 'Volume Scambi NTN'}</span>
-                <p className="text-2xl font-black text-slate-900 font-mono">{analyzedData.ntnVolume} <span className="text-xs font-normal text-slate-400">{analyzedData.isLiveApi ? 'attivi' : '/anno'}</span></p>
-                <span className="text-[10px] text-slate-500 block">{analyzedData.isLiveApi ? 'Campione portale Immobiliare.it' : 'Compravendite registrate OMI'}</span>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-600">
+                  <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-100">
+                    <tr>
+                      <th className="py-3 px-4">Taglio / Tipologia</th>
+                      <th className="py-3 px-4">Superficie</th>
+                      <th className="py-3 px-4">Prezzo Totale</th>
+                      <th className="py-3 px-4">Prezzo €/m²</th>
+                      <th className="py-3 px-4">Data Registrazione</th>
+                      <th className="py-3 px-4">Fonte</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {filteredComparables.length > 0 ? (
+                      filteredComparables.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4 font-bold text-slate-900">{item.property_type}</td>
+                          <td className="py-3 px-4 font-mono">{item.surface_m2} m²</td>
+                          <td className="py-3 px-4 font-mono text-slate-900 font-bold">{item.price.toLocaleString('it-IT')} €</td>
+                          <td className="py-3 px-4 font-mono text-amber-600 font-bold">{Math.round(item.price_m2).toLocaleString('it-IT')} €/m²</td>
+                          <td className="py-3 px-4 font-mono">{item.transaction_date}</td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${item.source === 'IMMOBILIARE_IT' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-700'}`}>
+                              {item.source}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-6 text-center text-slate-400">
+                          Nessun comparabile trovato per i filtri selezionati.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
